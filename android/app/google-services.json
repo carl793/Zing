@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "638583943713",
+    "project_id": "zing---couple-virtual-space",
+    "storage_bucket": "zing---couple-virtual-space.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:638583943713:android:a800cbb3b0bc1a6890a960",
+        "android_client_info": {
+          "package_name": "com.example.zing"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "638583943713-jt5eftebukkaqn3iae4tlek4efmc0tj0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD5jmeU_MssbGt89LAPxvrzf0gRguTrbC4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "638583943713-jt5eftebukkaqn3iae4tlek4efmc0tj0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
