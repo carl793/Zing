@@ -57,7 +57,7 @@ class DayEntryPickerModal extends StatelessWidget {
           ],
           if (!plansOnly && !ctrl.hasOwnMemoryOn(date))
             PixelButton(
-              label: '[ + ADD ANOTHER MEMORY ]',
+              label: '[ + ADD YOUR ENTRY ]',
               style: PixelButtonStyle.yellow,
               onPressed: () => Navigator.of(context).pop(const PickerResult.add()),
             ),

@@ -29,7 +29,7 @@ class CalendarController extends ChangeNotifier {
   static const String _saveError =
       "COULDN'T SAVE. CHECK YOUR CONNECTION AND TRY AGAIN.";
   static const String _photoError =
-      'PHOTO UPLOAD FAILED. CHECK THAT FIREBASE STORAGE IS ENABLED.';
+      'PHOTO UPLOAD FAILED. CHECK YOUR CONNECTION AND TRY AGAIN.';
   static const String _notOwnerError = 'YOU CAN ONLY CHANGE YOUR OWN ENTRIES.';
   static const String _notLinkedError = 'NO PARTNER LINKED YET.';
 
