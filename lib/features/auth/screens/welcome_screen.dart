@@ -9,6 +9,7 @@ import '../../../core/widgets/pixel_button.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/firestore_service.dart';
 import '../controllers/auth_controller.dart';
 import '../widgets/auth_error_banner.dart';
 
@@ -62,11 +63,18 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Future<void> _routeAfterAuth() async {
     if (!mounted) return;
     final authService = context.read<AuthService>();
-    final hasProfile =
-        await authService.hasCompletedProfile(authService.currentUser!.uid);
+    final firestore = context.read<FirestoreService>();
+    final uid = authService.currentUser!.uid;
+    final hasProfile = await authService.hasCompletedProfile(uid);
+    // Also claims a link made while this account was signed out.
+    final coupleId = await firestore.recoverCoupleId(uid);
     if (!mounted) return;
-    Navigator.of(context).pushReplacementNamed(
-        hasProfile ? AppRoutes.pairing : AppRoutes.spriteSelect);
+    final route = !hasProfile
+        ? AppRoutes.spriteSelect
+        : (coupleId == null || coupleId.isEmpty
+            ? AppRoutes.pairing
+            : AppRoutes.dashboard);
+    Navigator.of(context).pushReplacementNamed(route);
   }
 
   @override

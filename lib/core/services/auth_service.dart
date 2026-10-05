@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 /// Wraps Firebase Auth + Google Sign-In. Registered as a singleton via Provider.
 class AuthService {
@@ -36,7 +37,11 @@ class AuthService {
   Future<void> sendPasswordResetEmail(String email) => _auth.sendPasswordResetEmail(email: email);
 
   Future<void> logout() async {
-    await _googleSignIn.signOut();
+    try {
+      await _googleSignIn.signOut();
+    } catch (e) {
+      debugPrint('Google sign-out failed: $e');
+    }
     await _auth.signOut();
   }
 

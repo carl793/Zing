@@ -11,8 +11,23 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/router/app_router.dart';
 import '../controllers/pairing_controller.dart';
 
-class PairingScreen extends StatelessWidget {
+class PairingScreen extends StatefulWidget {
   const PairingScreen({super.key});
+
+  @override
+  State<PairingScreen> createState() => _PairingScreenState();
+}
+
+class _PairingScreenState extends State<PairingScreen> {
+  Future<void> _logout() async {
+    final auth = context.read<AuthService>();
+    final navigator = Navigator.of(context);
+    await auth.logout();
+    navigator.pushNamedAndRemoveUntil(
+      AppRoutes.welcome,
+      (_) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,13 +37,14 @@ class PairingScreen extends StatelessWidget {
         context.read<FirestoreService>(),
         currentUid: uid,
       ),
-      child: const _PairingView(),
+      child: _PairingView(onLogout: _logout),
     );
   }
 }
 
 class _PairingView extends StatelessWidget {
-  const _PairingView();
+  final VoidCallback onLogout;
+  const _PairingView({required this.onLogout});
 
   @override
   Widget build(BuildContext context) {
@@ -49,11 +65,9 @@ class _PairingView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Progress bar — step 3 of 3
               const OnboardingProgressBar(currentStep: 3),
               const SizedBox(height: AppSpacing.lg),
 
-              // Back link
               GestureDetector(
                 onTap: () => Navigator.of(context).pop(),
                 child: Row(children: [
@@ -64,7 +78,6 @@ class _PairingView extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.lg),
 
-              // Header row with sprites + title
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -99,7 +112,6 @@ class _PairingView extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.lg),
 
-              // Tab bar
               PixelTabBar(
                 labels: const ['CREATE ROOM', 'JOIN ROOM'],
                 activeIndex: ctrl.tab == PairingTab.create ? 0 : 1,
@@ -108,10 +120,32 @@ class _PairingView extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.md),
 
-              // Panel switches based on active tab
               ctrl.tab == PairingTab.create
                   ? const _CreatePanel()
                   : const _JoinPanel(),
+
+              const SizedBox(height: AppSpacing.xl),
+              const Divider(color: Colors.white12, thickness: 1),
+              const SizedBox(height: AppSpacing.md),
+
+              Center(
+                child: TextButton(
+                  onPressed: onLogout,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.coral,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                  ),
+                  child: Text(
+                    '[ LOGOUT ]',
+                    style: AppTextStyles.caption.copyWith(
+                      color: AppColors.coral,
+                      fontSize: 7,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
             ],
           ),
         ),
@@ -199,7 +233,6 @@ class _CreateWaiting extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
 
-        // Code box + copy button
         Container(
           decoration: BoxDecoration(
             color: AppColors.charcoal,
@@ -234,9 +267,11 @@ class _CreateWaiting extends StatelessWidget {
                           blurRadius: 0)
                     ],
                   ),
-                  child: Text('[COPY]',
-                      style: AppTextStyles.caption
-                          .copyWith(color: Colors.black, fontSize: 7)),
+                  child: Text(
+                    '[COPY]',
+                    style: AppTextStyles.caption
+                        .copyWith(color: Colors.black, fontSize: 7),
+                  ),
                 ),
               ),
             ],
@@ -272,15 +307,18 @@ class _CreateWaiting extends StatelessWidget {
           children: [
             GestureDetector(
               onTap: ctrl.regenerateCode,
-              child: Text('[ NEW CODE ]',
-                  style:
-                      AppTextStyles.caption.copyWith(color: AppColors.cyan)),
+              child: Text(
+                '[ NEW CODE ]',
+                style: AppTextStyles.caption.copyWith(color: AppColors.cyan),
+              ),
             ),
             GestureDetector(
               onTap: () => ctrl.cancelRoom(),
-              child: Text('[ CANCEL ]',
-                  style: AppTextStyles.caption
-                      .copyWith(color: AppColors.coral)),
+              child: Text(
+                '[ CANCEL ]',
+                style: AppTextStyles.caption
+                    .copyWith(color: AppColors.coral),
+              ),
             ),
           ],
         ),
@@ -332,12 +370,11 @@ class _JoinPanelState extends State<_JoinPanel> {
               Text(
                 'ENTER THE 6-DIGIT CODE\nYOUR PARTNER SHARED\nWITH YOU.',
                 textAlign: TextAlign.center,
-                style: AppTextStyles.body
-                    .copyWith(color: Colors.white70, fontSize: 7, height: 1.8),
+                style: AppTextStyles.body.copyWith(
+                    color: Colors.white70, fontSize: 7, height: 1.8),
               ),
               const SizedBox(height: AppSpacing.lg),
 
-              // Code input
               Container(
                 decoration: BoxDecoration(
                   color: AppColors.charcoal,
@@ -376,7 +413,6 @@ class _JoinPanelState extends State<_JoinPanel> {
                 ),
               ),
 
-              // Error banner
               if (ctrl.joinError != JoinError.none) ...[
                 const SizedBox(height: AppSpacing.sm),
                 _JoinErrorBanner(error: ctrl.joinError),

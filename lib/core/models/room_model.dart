@@ -9,12 +9,17 @@ class RoomModel {
   final DateTime createdAt;
   final DateTime expiresAt;
 
+  /// Set once the room is linked. Carries the id of the couple document so
+  /// the creator can claim the link from their own account document.
+  final String? coupleId;
+
   RoomModel({
     required this.code,
     required this.createdByUid,
     required this.status,
     required this.createdAt,
     required this.expiresAt,
+    this.coupleId,
   });
 
   factory RoomModel.fromMap(String code, Map<String, dynamic> data) => RoomModel(
@@ -26,6 +31,7 @@ class RoomModel {
         ),
         createdAt: (data['createdAt'] as Timestamp).toDate(),
         expiresAt: (data['expiresAt'] as Timestamp).toDate(),
+        coupleId: data['coupleId'] as String?,
       );
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);

@@ -73,11 +73,23 @@ class PairingController extends ChangeNotifier {
     _roomSub?.cancel();
     _roomSub = _fs.streamRoom(generatedCode!).listen((room) {
       if (room?.status == RoomStatus.linked) {
+        _claimCouple(room!.coupleId);
         linked = true;
         _countdownTimer?.cancel();
         notifyListeners();
       }
     });
+  }
+
+  /// Writes the room's couple id to this account's own document. Joining never
+  /// touches the creator's document, so the creator claims it here instead.
+  Future<void> _claimCouple(String? coupleId) async {
+    if (coupleId == null || coupleId.isEmpty) return;
+    try {
+      await _fs.claimCoupleId(uid: currentUid, coupleId: coupleId);
+    } catch (e) {
+      debugPrint('claimCoupleId failed: $e');
+    }
   }
 
   Future<void> regenerateCode() async {
@@ -123,20 +135,31 @@ class PairingController extends ChangeNotifier {
     joinError = JoinError.none;
     notifyListeners();
 
-    final result = await _fs.joinRoom(code: code, joinerUid: currentUid);
+    JoinRoomResult result;
+    try {
+      result = await _fs.joinRoom(code: code, joinerUid: currentUid);
+    } catch (e) {
+      debugPrint('joinRoom threw: $e');
+      result = JoinRoomResult.error;
+    }
 
     joinLoading = false;
     switch (result) {
       case JoinRoomResult.success:
         linked = true;
+        break;
       case JoinRoomResult.notFound:
         joinError = JoinError.notFound;
+        break;
       case JoinRoomResult.expired:
         joinError = JoinError.expired;
+        break;
       case JoinRoomResult.alreadyLinked:
         joinError = JoinError.alreadyLinked;
+        break;
       case JoinRoomResult.selfJoin:
         joinError = JoinError.selfJoin;
+        break;
       case JoinRoomResult.error:
         joinError = JoinError.network;
     }

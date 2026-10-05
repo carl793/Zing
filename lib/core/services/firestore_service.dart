@@ -124,21 +124,28 @@ class FirestoreService {
           },
         });
 
-        tx.update(roomRef, {'status': 'linked'});
-        tx.update(
-          _db.collection('users').doc(room.createdByUid),
-          {'coupleId': coupleRef.id},
-        );
-        tx.update(
+        tx.update(roomRef, {
+          'status': RoomStatus.linked.name,
+          'coupleId': coupleRef.id,
+        });
+
+        // Only the joining account's own document is written from this client:
+        // Firestore rules only let an account write itself, so writing the
+        // partner's document here rejected the whole transaction and the UI
+        // reported it as "no connection". The creator claims the same couple id
+        // from the room instead — see claimCoupleId / recoverCoupleId.
+        tx.set(
           _db.collection('users').doc(joinerUid),
           {'coupleId': coupleRef.id},
+          SetOptions(merge: true),
         );
 
         return JoinRoomResult.success;
       });
     } catch (e, stack) {
+      final reason = e is FirebaseException ? ' [${e.code}]' : '';
       debugPrint('══════════════════════════════');
-      debugPrint('joinRoom FAILED');
+      debugPrint('joinRoom FAILED$reason');
       debugPrint('Code attempted: $code');
       debugPrint('Joiner UID: $joinerUid');
       debugPrint('Error type: ${e.runtimeType}');
@@ -146,6 +153,46 @@ class FirestoreService {
       debugPrint('Stack: $stack');
       debugPrint('══════════════════════════════');
       return JoinRoomResult.error;
+    }
+  }
+
+  // ---------- Pairing: claiming your own link ----------
+
+  /// Writes [coupleId] to the caller's own user document. Merging means this
+  /// never fails on a missing document, and it is safe to call more than once.
+  Future<void> claimCoupleId({required String uid, required String coupleId}) =>
+      setDoc('users/$uid', {'coupleId': coupleId});
+
+  /// Returns the couple [uid] is linked to, or null while still unpaired.
+  ///
+  /// A link is only ever written by the account that performed it, so an
+  /// account that was signed out while its partner joined has no `coupleId` of
+  /// its own yet. The room it created carries the id, so the link is claimed
+  /// here. Never throws: routing must not break if the lookup fails.
+  Future<String?> recoverCoupleId(String uid) async {
+    try {
+      final userSnap = await _db.collection('users').doc(uid).get();
+      final stored = userSnap.data()?['coupleId'] as String?;
+      if (stored != null && stored.isNotEmpty) return stored;
+
+      final rooms = await _db
+          .collection('rooms')
+          .where('createdByUid', isEqualTo: uid)
+          .limit(10)
+          .get();
+
+      for (final room in rooms.docs) {
+        final data = room.data();
+        if (data['status'] != RoomStatus.linked.name) continue;
+        final coupleId = data['coupleId'] as String?;
+        if (coupleId == null || coupleId.isEmpty) continue;
+        await claimCoupleId(uid: uid, coupleId: coupleId);
+        return coupleId;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('recoverCoupleId failed for $uid: $e');
+      return null;
     }
   }
 

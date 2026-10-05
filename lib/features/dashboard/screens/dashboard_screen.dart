@@ -116,8 +116,9 @@ class _HeaderBar extends StatelessWidget {
       child: Row(
         children: [
           // P1
-          Container(width: 12, height: 12,
-              color: AppColors.coral,
+          Container(
+              width: 12,
+              height: 12,
               decoration: BoxDecoration(
                   color: AppColors.coral,
                   border: Border.all(color: Colors.black, width: 1))),
