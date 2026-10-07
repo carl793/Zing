@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/audio_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
@@ -50,7 +51,12 @@ class PixelButton extends StatelessWidget {
     final Color borderColor = _isOutline ? accent : Colors.black;
 
     return GestureDetector(
-      onTap: onPressed,
+      onTap: onPressed == null
+          ? null
+          : () {
+              AudioService.instance.playSfx(AppSfx.tap);
+              onPressed!();
+            },
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(

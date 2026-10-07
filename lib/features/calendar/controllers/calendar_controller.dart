@@ -53,6 +53,7 @@ class CalendarController extends ChangeNotifier {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _monthSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _recentSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _coupleSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _partnerProfileSub;
   bool _disposed = false;
 
   static DateTime _currentMonth() {
@@ -83,12 +84,14 @@ class CalendarController extends ChangeNotifier {
       partnerUid = couple.partnerUid(myUid);
 
       if (partnerUid.isNotEmpty) {
-        final partnerSnap = await _fs.doc('users/$partnerUid').get();
-        if (partnerSnap.exists) {
-          final name =
-              UserModel.fromMap(partnerUid, partnerSnap.data()!).displayName;
-          if (name.isNotEmpty) partnerName = name.toUpperCase();
-        }
+        _partnerProfileSub = _fs.streamDoc('users/$partnerUid').listen((snap) {
+          if (!snap.exists || snap.data() == null) return;
+          final name = UserModel.fromMap(partnerUid, snap.data()!).displayName;
+          if (name.isNotEmpty) {
+            partnerName = name.toUpperCase();
+            notifyListeners();
+          }
+        });
       }
 
       _coupleSub = _fs.streamDoc('couples/$coupleId').listen((snap) {
@@ -122,6 +125,7 @@ class CalendarController extends ChangeNotifier {
     _monthSub?.cancel();
     _recentSub?.cancel();
     _coupleSub?.cancel();
+    _partnerProfileSub?.cancel();
     super.dispose();
   }
 

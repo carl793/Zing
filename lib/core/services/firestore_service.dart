@@ -175,13 +175,25 @@ class FirestoreService {
       final stored = userSnap.data()?['coupleId'] as String?;
       if (stored != null && stored.isNotEmpty) return stored;
 
+      // A server-side orderBy on a different field than the where
+      // clause needs a composite index that is not deployed, so the
+      // most recent room is picked client-side instead.
       final rooms = await _db
           .collection('rooms')
           .where('createdByUid', isEqualTo: uid)
           .limit(10)
           .get();
+      final sorted = rooms.docs.toList()
+        ..sort((a, b) {
+          final ta = a.data()['createdAt'] as Timestamp?;
+          final tb = b.data()['createdAt'] as Timestamp?;
+          if (ta == null && tb == null) return 0;
+          if (ta == null) return 1;
+          if (tb == null) return -1;
+          return tb.compareTo(ta);
+        });
 
-      for (final room in rooms.docs) {
+      for (final room in sorted) {
         final data = room.data();
         if (data['status'] != RoomStatus.linked.name) continue;
         final coupleId = data['coupleId'] as String?;

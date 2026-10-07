@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'core/services/auth_service.dart';
+import 'core/services/couple_service.dart';
 import 'core/services/firestore_service.dart';
 import 'core/services/location_service.dart';
 import 'core/services/storage_service.dart';
+import 'core/theme/app_theme.dart';
 import 'features/auth/controllers/auth_controller.dart';
 
 class ZingApp extends StatelessWidget {
@@ -21,6 +22,9 @@ class ZingApp extends StatelessWidget {
         Provider<StorageService>(create: (_) => StorageService()),
         Provider<LocationService>(
           create: (ctx) => LocationService(ctx.read<FirestoreService>()),
+        ),
+        Provider<CoupleService>(
+          create: (ctx) => CoupleService(ctx.read<FirestoreService>()),
         ),
         ChangeNotifierProvider<AuthController>(
           create: (ctx) => AuthController(ctx.read<AuthService>()),

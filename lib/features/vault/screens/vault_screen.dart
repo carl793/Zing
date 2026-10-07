@@ -86,25 +86,58 @@ class _VaultView extends StatelessWidget {
                     child: CircularProgressIndicator(color: AppColors.yellow),
                   ),
                 )
-              else if (isEmpty)
-                Expanded(child: _EmptyVault(ctrl: ctrl))
+              else if (ctrl.error != null)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          ctrl.error!,
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.caption
+                              .copyWith(color: AppColors.coral, height: 1.8),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        PixelButton(
+                          label: '[ RETRY ]',
+                          onPressed: ctrl.retry,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
               else ...[
                 VaultFilterBar(
                   current: ctrl.filter,
+                  sender: ctrl.senderFilter,
+                  status: ctrl.statusFilter,
+                  showArchived: ctrl.showArchived,
                   totalCount: ctrl.totalCount,
                   onSelect: ctrl.setFilter,
+                  onSenderSelect: ctrl.setSenderFilter,
+                  onStatusSelect: ctrl.setStatusFilter,
+                  onArchiveSelect: ctrl.setShowArchived,
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 Expanded(
                   child: capsules.isEmpty
-                      ? Center(
-                          child: Text(
-                            'NO CHESTS IN THIS FILTER.',
-                            textAlign: TextAlign.center,
-                            style: AppTextStyles.caption
-                                .copyWith(color: AppColors.gray),
-                          ),
-                        )
+                      ? (isEmpty &&
+                              !ctrl.showArchived &&
+                              ctrl.filter == VaultFilter.all &&
+                              ctrl.senderFilter == VaultSenderFilter.all &&
+                              ctrl.statusFilter == VaultStatusFilter.all
+                          ? _EmptyVault(ctrl: ctrl)
+                          : Center(
+                              child: Text(
+                                ctrl.showArchived
+                                    ? 'NO ARCHIVED CHESTS.'
+                                    : 'NO CHESTS IN THIS FILTER.',
+                                textAlign: TextAlign.center,
+                                style: AppTextStyles.caption
+                                    .copyWith(color: AppColors.gray),
+                              ),
+                            ))
                       : GridView.builder(
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
@@ -121,10 +154,8 @@ class _VaultView extends StatelessWidget {
                               ctrl: ctrl,
                               onTap: () =>
                                   _openChest(context, ctrl, capsule),
-                              onLongPress: ctrl.isMyChest(capsule) &&
-                                      capsule.status == CapsuleStatus.sealed
-                                  ? () => _longPress(context, ctrl, capsule)
-                                  : null,
+                              onLongPress: () =>
+                                  _longPress(context, ctrl, capsule),
                             );
                           },
                         ),
@@ -302,11 +333,22 @@ class _ChestContextSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'YOUR OWN SEALED CHEST.',
+            capsule.isArchived ? 'ARCHIVED CHEST.' : (ctrl.isMyChest(capsule) && capsule.status == CapsuleStatus.sealed ? 'YOUR OWN SEALED CHEST.' : 'CHEST OPTIONS.'),
             style: AppTextStyles.caption
                 .copyWith(color: AppColors.gray, fontSize: 6),
           ),
           const SizedBox(height: AppSpacing.lg),
+          PixelButton(
+            label: capsule.isArchived ? '[ RESTORE TO VAULT ]' : '[ ARCHIVE CHEST ]',
+            style: PixelButtonStyle.outline,
+            backgroundColor: AppColors.charcoal,
+            onPressed: () async {
+              await ctrl.setArchived(capsule, !capsule.isArchived);
+              if (context.mounted) Navigator.of(context).pop();
+            },
+          ),
+          if (ctrl.isMyChest(capsule) && capsule.status == CapsuleStatus.sealed) const SizedBox(height: AppSpacing.md),
+          if (ctrl.isMyChest(capsule) && capsule.status == CapsuleStatus.sealed)
           PixelButton(
             label: '[ CANCEL CHEST ]',
             style: PixelButtonStyle.outlineDanger,

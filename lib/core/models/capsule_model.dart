@@ -33,6 +33,7 @@ class CapsuleModel {
   final String? voiceNoteUrl;
   final CapsuleStatus status;
   final DateTime? openedAt;
+  final bool isArchived;
   final DateTime createdAt;
 
   CapsuleModel({
@@ -47,6 +48,7 @@ class CapsuleModel {
     this.voiceNoteUrl,
     this.status = CapsuleStatus.sealed,
     this.openedAt,
+    this.isArchived = false,
     required this.createdAt,
   });
 
@@ -68,6 +70,7 @@ class CapsuleModel {
           orElse: () => CapsuleStatus.sealed,
         ),
         openedAt: (data['openedAt'] as Timestamp?)?.toDate(),
+        isArchived: data['isArchived'] as bool? ?? false,
         createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       );
 

@@ -10,6 +10,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
 import '../../../core/widgets/pixel_padlock.dart';
 import '../controllers/vault_controller.dart';
+import 'chest_unlocked_modal.dart';
 
 class ChestLockedDateModal extends StatefulWidget {
   final CapsuleModel capsule;
@@ -35,9 +36,11 @@ class _ChestLockedDateModalState extends State<ChestLockedDateModal> {
     final unlock = widget.capsule.unlockDate;
     if (unlock == null) return;
     final now = DateTime.now();
+    if (!unlock.isAfter(now)) context.read<VaultController>().refreshDueUnlocks();
     final sealed = widget.capsule.createdAt;
     final total = unlock.difference(sealed).inSeconds;
     final remaining = unlock.difference(now);
+    if (!mounted) return;
     setState(() {
       _remaining = remaining.isNegative ? Duration.zero : remaining;
       final elapsed = total - remaining.inSeconds;
@@ -72,6 +75,51 @@ class _ChestLockedDateModalState extends State<ChestLockedDateModal> {
 
   @override
   Widget build(BuildContext context) {
+    final ctrl = context.watch<VaultController>();
+    final capsule =
+        ctrl.capsuleById(widget.capsule.capsuleId) ?? widget.capsule;
+    if (capsule.status == CapsuleStatus.unlocked) {
+      return Scaffold(
+        backgroundColor: AppColors.navy,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'CHEST UNLOCKED',
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.header.copyWith(color: AppColors.yellow),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                PixelButton(
+                  label: '[ OPEN CHEST ]',
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ChangeNotifierProvider.value(
+                          value: ctrl,
+                          child: ChestUnlockedModal(capsule: capsule),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: AppSpacing.md),
+                PixelButton(
+                  label: '[ CLOSE ]',
+                  style: PixelButtonStyle.outline,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: AppColors.navy,
       body: SafeArea(

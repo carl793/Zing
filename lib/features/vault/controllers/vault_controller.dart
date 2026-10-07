@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:record/record.dart';
@@ -14,6 +14,8 @@ import '../../../core/services/firestore_service.dart';
 import '../../../core/services/storage_service.dart';
 
 enum VaultFilter { all, dateLocked, dualTap }
+enum VaultSenderFilter { all, byYou, byPartner }
+enum VaultStatusFilter { all, unlocked, locked }
 
 class VaultController extends ChangeNotifier {
   VaultController(this._fs, this._storage, {required this.myUid});
@@ -30,9 +32,10 @@ class VaultController extends ChangeNotifier {
 
   // ── State ──
   List<CapsuleModel> _allCapsules = [];
-  List<CapsuleModel> _sealedCapsules = [];
-  List<CapsuleModel> _unlockedCapsules = [];
   VaultFilter filter = VaultFilter.all;
+  VaultSenderFilter senderFilter = VaultSenderFilter.all;
+  VaultStatusFilter statusFilter = VaultStatusFilter.all;
+  bool showArchived = false;
   bool isLoading = true;
   String? error;
 
@@ -44,7 +47,20 @@ class VaultController extends ChangeNotifier {
   bool isSaving = false;
   String? saveError;
 
-  StreamSubscription? _capsuleSub;
+  StreamSubscription? _sealedCapsuleSub;
+  StreamSubscription? _unlockedCapsuleSub;
+  StreamSubscription? _partnerProfileSub;
+  final Map<String, CapsuleModel> _sealedCapsules = {};
+  final Map<String, CapsuleModel> _unlockedCapsules = {};
+  bool _sealedSnapshotReceived = false;
+  bool _unlockedSnapshotReceived = false;
+  bool _sealedStreamFailed = false;
+  bool _unlockedStreamFailed = false;
+  bool _initialLoadExpired = false;
+  final List<String> _streamErrors = [];
+  Timer? _unlockTimer;
+  Timer? _initialLoadTimeout;
+  final Set<String> _unlockingCapsuleIds = {};
   final AudioRecorder _recorder = AudioRecorder();
   bool _disposed = false;
 
@@ -57,136 +73,237 @@ class VaultController extends ChangeNotifier {
   // ─────────────────────────────────────────────
 
   List<CapsuleModel> get capsules {
-    return switch (filter) {
-      VaultFilter.all => _allCapsules,
-      VaultFilter.dateLocked => _allCapsules
-          .where((c) => c.triggerMode == CapsuleTriggerMode.dateRelease)
-          .toList(),
-      VaultFilter.dualTap => _allCapsules
-          .where((c) => c.triggerMode == CapsuleTriggerMode.dualTapSync)
-          .toList(),
-    };
+    return _allCapsules.where((c) {
+      if (c.status == CapsuleStatus.cancelled || c.isArchived != showArchived) return false;
+      if (filter == VaultFilter.dateLocked && c.triggerMode != CapsuleTriggerMode.dateRelease) return false;
+      if (filter == VaultFilter.dualTap && c.triggerMode != CapsuleTriggerMode.dualTapSync) return false;
+      if (senderFilter == VaultSenderFilter.byYou && c.creatorUid != myUid) return false;
+      if (senderFilter == VaultSenderFilter.byPartner && c.creatorUid != partnerUid) return false;
+      if (statusFilter == VaultStatusFilter.unlocked && c.status != CapsuleStatus.unlocked) return false;
+      if (statusFilter == VaultStatusFilter.locked && c.status != CapsuleStatus.sealed) return false;
+      return true;
+    }).toList();
   }
 
   /// Total capsule count across every filter.
-  int get totalCount => _allCapsules.length;
+  int get totalCount => _allCapsules.where((c) => c.status != CapsuleStatus.cancelled && c.isArchived == showArchived).length;
 
   /// True when this couple has no capsules at all.
-  bool get isEmpty => _allCapsules.isEmpty;
+  bool get isEmpty => totalCount == 0;
+  CapsuleModel? capsuleById(String id) { for (final c in _allCapsules) { if (c.capsuleId == id) return c; } return null; }
+  Future<void> refreshDueUnlocks() => _checkAutoUnlock();
 
   void setFilter(VaultFilter f) {
     filter = f;
     notifyListeners();
   }
 
+  void setSenderFilter(VaultSenderFilter f) { senderFilter = f; notifyListeners(); }
+  void setStatusFilter(VaultStatusFilter f) { statusFilter = f; notifyListeners(); }
+  void setShowArchived(bool value) { showArchived = value; notifyListeners(); }
+
   // ─────────────────────────────────────────────
   // Lifecycle
   // ─────────────────────────────────────────────
 
   Future<void> init() async {
+    _sealedCapsuleSub?.cancel();
+    _unlockedCapsuleSub?.cancel();
+    _initialLoadTimeout?.cancel();
+    _initialLoadExpired = false;
+    _sealedStreamFailed = false;
+    _unlockedStreamFailed = false;
+    _streamErrors.clear();
+    isLoading = true;
+    error = null;
+    notifyListeners();
     try {
-      final mySnap = await _fs.doc('users/$myUid').get();
+      final mySnap = await _fs
+          .doc('users/$myUid')
+          .get()
+          .timeout(const Duration(seconds: 12));
       if (!mySnap.exists) {
         isLoading = false;
+        error = 'YOUR ACCOUNT COULD NOT BE FOUND.';
         notifyListeners();
         return;
       }
       final me = UserModel.fromMap(myUid, mySnap.data()!);
       coupleId = me.coupleId;
+      if (coupleId == null || coupleId!.isEmpty) {
+        coupleId = await _fs.recoverCoupleId(myUid);
+      }
       if (coupleId == null) {
         isLoading = false;
         notifyListeners();
         return;
       }
 
-      final coupleSnap = await _fs.doc('couples/$coupleId').get();
+      final coupleSnap = await _fs
+          .doc('couples/$coupleId')
+          .get()
+          .timeout(const Duration(seconds: 12));
+      if (!coupleSnap.exists || coupleSnap.data() == null) {
+        isLoading = false;
+        error = 'YOUR LINKED COUPLE COULD NOT BE FOUND.';
+        notifyListeners();
+        return;
+      }
       final couple = CoupleModel.fromMap(coupleId!, coupleSnap.data()!);
       partnerUid = couple.partnerUid(myUid);
       isPlayerOne = couple.memberUids.isNotEmpty &&
           couple.memberUids.first == myUid;
 
-      if (partnerUid.isNotEmpty) {
-        final pSnap = await _fs.doc('users/$partnerUid').get();
-        if (pSnap.exists) {
-          final n = UserModel.fromMap(partnerUid, pSnap.data()!).displayName;
-          if (n.isNotEmpty) partnerName = n.toUpperCase();
-        }
-      }
-
+      // The chest stream should not wait for this nonessential profile read.
       _subscribeCapsules();
-      // Auto-unlock date-based chests that have passed their date.
       _scheduleAutoUnlockCheck();
+      if (partnerUid.isNotEmpty) {
+        _subscribePartnerProfile(partnerUid);
+      }
     } catch (e) {
       debugPrint('VaultController.init error: $e');
       isLoading = false;
+      error = _vaultErrorMessage(e);
       notifyListeners();
     }
   }
 
-  /// Rebuilds the display list from the two per-status subscriptions so
-  /// neither stream clobbers the other's capsules.
-  void _mergeCapsules() {
-    _allCapsules = [..._sealedCapsules, ..._unlockedCapsules]
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  void _subscribePartnerProfile(String uid) {
+    _partnerProfileSub?.cancel();
+    _partnerProfileSub = _fs.streamDoc('users/$uid').listen((snap) {
+      if (!snap.exists || snap.data() == null) return;
+      final name = UserModel.fromMap(uid, snap.data()!).displayName;
+      if (name.isNotEmpty && !_disposed) {
+        partnerName = name.toUpperCase();
+        notifyListeners();
+      }
+    }, onError: (Object e) => debugPrint('Vault partner profile stream error: $e'));
   }
+
+  Future<void> retry() => init();
 
   void _subscribeCapsules() {
     if (coupleId == null) return;
-    _capsuleSub?.cancel();
+    _sealedCapsuleSub?.cancel();
+    _unlockedCapsuleSub?.cancel();
+    _partnerProfileSub?.cancel();
+    _sealedCapsules.clear();
+    _unlockedCapsules.clear();
+    _sealedSnapshotReceived = false;
+    _unlockedSnapshotReceived = false;
+    _sealedStreamFailed = false;
+    _unlockedStreamFailed = false;
+    _initialLoadExpired = false;
+    _streamErrors.clear();
     isLoading = true;
     notifyListeners();
 
-    _capsuleSub = _fs
+    _initialLoadTimeout = Timer(const Duration(seconds: 15), () {
+      if (_disposed || !isLoading) return;
+      if (_sealedSnapshotReceived || _unlockedSnapshotReceived) {
+        if (!_sealedSnapshotReceived) _sealedStreamFailed = true;
+        if (!_unlockedSnapshotReceived) _unlockedStreamFailed = true;
+        _mergeCapsuleSnapshots();
+        return;
+      }
+      _initialLoadExpired = true;
+      isLoading = false;
+      error = 'THE VAULT DID NOT RETURN CHESTS. TAP RETRY.';
+      if (_streamErrors.isNotEmpty) {
+        error = '$error ${_streamErrors.join(' ')}';
+      }
+      notifyListeners();
+    });
+
+    // Keep the status constraints used by the vault's existing Firestore
+    // access path. An unrestricted collection read can be rejected by rules
+    // that allow only sealed and unlocked capsule documents.
+    _sealedCapsuleSub = _fs
         .streamCollection(
           'couples/$coupleId/capsules',
-          orderBy: 'createdAt',
-          whereEquals: [
-            ('status', CapsuleStatus.sealed.name),
-          ],
+          whereEquals: [('status', CapsuleStatus.sealed.name)],
         )
         .listen(
       (snap) {
-        _sealedCapsules =
-            snap.docs.map((d) => CapsuleModel.fromMap(d.id, d.data())).toList();
-        _mergeCapsules();
-        isLoading = false;
-        notifyListeners();
+        _sealedCapsules
+          ..clear()
+          ..addEntries(snap.docs.map((d) => MapEntry(
+                d.id,
+                CapsuleModel.fromMap(d.id, d.data()),
+              )));
+        _sealedSnapshotReceived = true;
+        _mergeCapsuleSnapshots();
       },
-      onError: (e) {
-        debugPrint('Vault stream error: $e');
-        isLoading = false;
-        notifyListeners();
-      },
+      onError: (Object e) => _handleCapsuleStreamError(e, sealed: true),
     );
 
-    // Separate subscription for unlocked capsules
-    _fs
+    _unlockedCapsuleSub = _fs
         .streamCollection(
           'couples/$coupleId/capsules',
           whereEquals: [('status', CapsuleStatus.unlocked.name)],
-          orderBy: 'createdAt',
         )
         .listen(
       (snap) {
-        _unlockedCapsules =
-            snap.docs.map((d) => CapsuleModel.fromMap(d.id, d.data())).toList();
-        _mergeCapsules();
-        notifyListeners();
+        _unlockedCapsules
+          ..clear()
+          ..addEntries(snap.docs.map((d) => MapEntry(
+                d.id,
+                CapsuleModel.fromMap(d.id, d.data()),
+              )));
+        _unlockedSnapshotReceived = true;
+        _mergeCapsuleSnapshots();
       },
-      onError: (e) => debugPrint('Vault unlocked stream error: $e'),
+      onError: (Object e) => _handleCapsuleStreamError(e, sealed: false),
     );
+  }
+
+  void _mergeCapsuleSnapshots() {
+    _allCapsules = [..._sealedCapsules.values, ..._unlockedCapsules.values]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final sealedSettled = _sealedSnapshotReceived || _sealedStreamFailed;
+    final unlockedSettled = _unlockedSnapshotReceived || _unlockedStreamFailed;
+    final allSettled = sealedSettled && unlockedSettled;
+    final hasAnySnapshot = _sealedSnapshotReceived || _unlockedSnapshotReceived;
+    isLoading = !allSettled && !_initialLoadExpired;
+    if (allSettled) {
+      _initialLoadTimeout?.cancel();
+      error = hasAnySnapshot
+          ? null
+          : 'COULD NOT LOAD THE VAULT. CHECK YOUR CONNECTION AND RETRY.';
+      if (!hasAnySnapshot && _streamErrors.isNotEmpty) {
+        error = '$error ${_streamErrors.join(' ')}';
+      }
+    } else if (hasAnySnapshot) {
+      // Keep usable chests visible while the other status stream is pending.
+      error = null;
+    }
+    notifyListeners();
+    _checkAutoUnlock();
+  }
+
+  void _handleCapsuleStreamError(Object e, {required bool sealed}) {
+    debugPrint('Vault stream error: $e');
+    _streamErrors.add(_vaultErrorMessage(e));
+    if (sealed) {
+      _sealedStreamFailed = true;
+    } else {
+      _unlockedStreamFailed = true;
+    }
+    _mergeCapsuleSnapshots();
+  }
+
+  String _vaultErrorMessage(Object error) {
+    if (error is FirebaseException) {
+      return 'FIRESTORE ${error.code}: ${error.message ?? 'UNKNOWN ERROR'}';
+    }
+    return error.toString();
   }
 
   /// Checks if any sealed date-release capsule has passed its unlock date
   /// and flips it to "unlocked" in Firestore.
   void _scheduleAutoUnlockCheck() {
-    Timer.periodic(const Duration(minutes: 1), (timer) async {
-      if (_disposed) {
-        timer.cancel();
-        return;
-      }
-      await _checkAutoUnlock();
-    });
+    _unlockTimer?.cancel();
+    _unlockTimer = Timer.periodic(const Duration(seconds: 10), (_) => _checkAutoUnlock());
     _checkAutoUnlock();
   }
 
@@ -197,7 +314,8 @@ class VaultController extends ChangeNotifier {
       if (capsule.triggerMode == CapsuleTriggerMode.dateRelease &&
           capsule.status == CapsuleStatus.sealed &&
           capsule.unlockDate != null &&
-          capsule.unlockDate!.isBefore(now)) {
+          !capsule.unlockDate!.isAfter(now) &&
+          _unlockingCapsuleIds.add(capsule.capsuleId)) {
         try {
           await _fs.updateDoc(
             'couples/$coupleId/capsules/${capsule.capsuleId}',
@@ -205,6 +323,8 @@ class VaultController extends ChangeNotifier {
           );
         } catch (e) {
           debugPrint('Auto-unlock failed for ${capsule.capsuleId}: $e');
+        } finally {
+          _unlockingCapsuleIds.remove(capsule.capsuleId);
         }
       }
     }
@@ -218,7 +338,11 @@ class VaultController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _capsuleSub?.cancel();
+    _sealedCapsuleSub?.cancel();
+    _unlockedCapsuleSub?.cancel();
+    _partnerProfileSub?.cancel();
+    _unlockTimer?.cancel();
+    _initialLoadTimeout?.cancel();
     _recorder.dispose();
     super.dispose();
   }
@@ -404,6 +528,17 @@ class VaultController extends ChangeNotifier {
       return null;
     } catch (e) {
       debugPrint('cancelCapsule failed: $e');
+      return _saveErr;
+    }
+  }
+
+  Future<String?> setArchived(CapsuleModel capsule, bool archived) async {
+    if (coupleId == null) return 'NO PARTNER LINKED YET.';
+    try {
+      await _fs.updateDoc('couples/$coupleId/capsules/${capsule.capsuleId}', {'isArchived': archived});
+      return null;
+    } catch (e) {
+      debugPrint('archive capsule failed: $e');
       return _saveErr;
     }
   }
