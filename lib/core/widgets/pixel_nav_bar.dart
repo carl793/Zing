@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
@@ -24,15 +25,9 @@ class PixelNavBar extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.charcoal,
-        border: Border(
-          top: BorderSide(color: Colors.black, width: 2),
-        ),
+        border: Border(top: BorderSide(color: Colors.black, width: 2)),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black,
-            offset: Offset(0, -4),
-            blurRadius: 0,
-          ),
+          BoxShadow(color: Colors.black, offset: Offset(0, -4), blurRadius: 0),
         ],
       ),
       child: Row(
@@ -63,7 +58,7 @@ class PixelNavBar extends StatelessWidget {
                     Text(
                       _tabs[i].label,
                       style: AppTextStyles.caption.copyWith(
-                        fontSize: 5,
+                        fontSize: 7,
                         color: active ? Colors.black : AppColors.gray,
                         letterSpacing: 0.3,
                       ),

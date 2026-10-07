@@ -9,6 +9,5 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await AudioService.instance.init();
-  final initialRoute = await AppRouter.resolveInitialRoute();
-  runApp(ZingApp(initialRoute: initialRoute));
+  runApp(const ZingApp(initialRoute: AppRoutes.launch));
 }

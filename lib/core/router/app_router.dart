@@ -12,6 +12,7 @@ import '../widgets/splash_screen.dart';
 
 class AppRoutes {
   AppRoutes._();
+  static const launch         = '/';
   static const welcome       = '/welcome';
   static const spriteSelect  = '/sprite-select';
   static const forgotPassword= '/forgot-password';
@@ -45,6 +46,8 @@ class AppRouter {
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
+      case AppRoutes.launch:
+        return _page(SplashScreen(resolveRoute: resolveInitialRoute));
       case AppRoutes.welcome:
         return _page(const WelcomeScreen());
       case AppRoutes.spriteSelect:
@@ -64,7 +67,7 @@ class AppRouter {
       case AppRoutes.settings:
         return _page(const ShellScreen(initialIndex: 3));
       default:
-        return _page(const SplashScreen());
+        return _page(SplashScreen(resolveRoute: resolveInitialRoute));
     }
   }
 

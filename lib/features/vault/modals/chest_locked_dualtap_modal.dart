@@ -7,7 +7,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
 import '../../../core/widgets/pixel_error_box.dart';
-import '../../../core/widgets/pixel_padlock.dart';
+import '../../../core/widgets/sprite_avatar.dart';
 import '../controllers/vault_controller.dart';
 
 class ChestLockedDualTapModal extends StatefulWidget {
@@ -72,7 +72,14 @@ class _ChestLockedDualTapModalState extends State<ChestLockedDualTapModal> {
               ),
               const SizedBox(height: AppSpacing.xl),
 
-              const Center(child: PixelPadlock(size: 70)),
+              const Center(
+                child: SpriteAssetIcon(
+                  assetPath: 'assets/sprites/mystery_box.svg',
+                  fallbackPath: 'assets/sprites/mystery_box_96.png',
+                  size: 84,
+                  semanticsLabel: 'Mystery box chest',
+                ),
+              ),
               const SizedBox(height: AppSpacing.md),
 
               Text(
@@ -122,8 +129,8 @@ class _ChestLockedDualTapModalState extends State<ChestLockedDualTapModal> {
                 label: _tapping
                     ? 'TAPPING...'
                     : (myDone
-                        ? '[ WAITING FOR PARTNER ]'
-                        : '[ TAP TO UNLOCK ]'),
+                          ? '[ WAITING FOR PARTNER ]'
+                          : '[ TAP TO UNLOCK ]'),
                 style: PixelButtonStyle.yellow,
                 onPressed: (myDone || _tapping)
                     ? null
@@ -202,7 +209,11 @@ class _TapChip extends StatelessWidget {
   final String label;
   final String status;
   final bool done;
-  const _TapChip({required this.label, required this.status, required this.done});
+  const _TapChip({
+    required this.label,
+    required this.status,
+    required this.done,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -268,8 +279,10 @@ class _CloseBtn extends StatelessWidget {
         ),
         child: Text(
           '[ X ]',
-          style: AppTextStyles.caption
-              .copyWith(color: AppColors.coral, fontSize: 8),
+          style: AppTextStyles.caption.copyWith(
+            color: AppColors.coral,
+            fontSize: 8,
+          ),
         ),
       ),
     );

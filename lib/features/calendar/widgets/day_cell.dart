@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_dashed_border.dart';
@@ -67,8 +68,10 @@ class DayCell extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
-                      style: AppTextStyles.caption
-                          .copyWith(fontSize: 4, color: _memoryAccent),
+                      style: AppTextStyles.caption.copyWith(
+                        fontSize: 6,
+                        color: _memoryAccent,
+                      ),
                     ),
                   ),
               ],
@@ -94,9 +97,13 @@ class DayCell extends StatelessWidget {
     switch (visual) {
       case DayVisual.memory:
         return entryCount >= 2
-            ? Text('x2',
-                style: AppTextStyles.caption
-                    .copyWith(fontSize: 5, color: _memoryAccent))
+            ? Text(
+                'x2',
+                style: AppTextStyles.caption.copyWith(
+                  fontSize: 6,
+                  color: _memoryAccent,
+                ),
+              )
             : const Icon(Icons.favorite, size: 7, color: _memoryAccent);
       case DayVisual.nextVisit:
         return const Icon(Icons.star, size: 8, color: AppColors.yellow);

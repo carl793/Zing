@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -25,16 +26,23 @@ class ReunionQuestCard extends StatelessWidget {
         color: AppColors.purple,
         border: Border.all(color: Colors.black, width: 2),
         boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(5, 5), blurRadius: 0)
+          BoxShadow(color: Colors.black, offset: Offset(5, 5), blurRadius: 0),
         ],
       ),
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.xl,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('NEXT REUNION QUEST',
-              style: AppTextStyles.label
-                  .copyWith(color: AppColors.cyan, fontSize: 9)),
+          Text(
+            'NEXT REUNION QUEST',
+            style: AppTextStyles.label.copyWith(
+              color: AppColors.cyan,
+              fontSize: 11,
+            ),
+          ),
           const SizedBox(height: AppSpacing.md),
           _buildBody(context),
         ],
@@ -46,9 +54,9 @@ class ReunionQuestCard extends StatelessWidget {
     return switch (controller.questState) {
       QuestState.none => _QuestEmpty(onPropose: onPropose),
       QuestState.pending => _QuestPending(
-          controller: controller,
-          onReview: onReview,
-        ),
+        controller: controller,
+        onReview: onReview,
+      ),
       QuestState.accepted => _QuestAccepted(controller: controller),
     };
   }
@@ -64,10 +72,14 @@ class _QuestEmpty extends StatelessWidget {
       children: [
         const Text('🗺️', style: TextStyle(fontSize: 26)),
         const SizedBox(height: AppSpacing.sm),
-        Text('NO REUNION QUEST\nSCHEDULED YET.',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.caption
-                .copyWith(color: AppColors.gray, height: 1.8)),
+        Text(
+          'NO REUNION QUEST\nSCHEDULED YET.',
+          textAlign: TextAlign.center,
+          style: AppTextStyles.caption.copyWith(
+            color: AppColors.gray,
+            height: 1.8,
+          ),
+        ),
         const SizedBox(height: AppSpacing.md),
         PixelButton(
           label: '[ + PROPOSE QUEST ]',
@@ -98,8 +110,11 @@ class _QuestPending extends StatelessWidget {
               ? 'QUEST PROPOSED — AWAITING\n${partnerName.toUpperCase()}\'S RESPONSE'
               : '${(controller.me?.displayName ?? 'PARTNER').toUpperCase()} PROPOSED\nA QUEST!',
           textAlign: TextAlign.center,
-          style: AppTextStyles.body
-              .copyWith(color: AppColors.yellow, fontSize: 7, height: 1.6),
+          style: AppTextStyles.body.copyWith(
+            color: AppColors.yellow,
+            fontSize: 8,
+            height: 1.6,
+          ),
         ),
         const SizedBox(height: AppSpacing.md),
         Container(
@@ -109,9 +124,12 @@ class _QuestPending extends StatelessWidget {
             children: [
               _questRow('📍', quest?.destination ?? '---'),
               const SizedBox(height: 4),
-              _questRow('📅', quest?.targetDate != null
-                  ? '${quest!.targetDate!.year}-${quest.targetDate!.month.toString().padLeft(2, '0')}-${quest.targetDate!.day.toString().padLeft(2, '0')}'
-                  : '---'),
+              _questRow(
+                '📅',
+                quest?.targetDate != null
+                    ? '${quest!.targetDate!.year}-${quest.targetDate!.month.toString().padLeft(2, '0')}-${quest.targetDate!.day.toString().padLeft(2, '0')}'
+                    : '---',
+              ),
             ],
           ),
         ),
@@ -119,10 +137,11 @@ class _QuestPending extends StatelessWidget {
         if (isProposer)
           GestureDetector(
             onTap: controller.cancelQuest,
-            child: Text('[ CANCEL PROPOSAL ]',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.caption
-                    .copyWith(color: AppColors.coral)),
+            child: Text(
+              '[ CANCEL PROPOSAL ]',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.caption.copyWith(color: AppColors.coral),
+            ),
           )
         else
           PixelButton(
@@ -135,14 +154,15 @@ class _QuestPending extends StatelessWidget {
   }
 
   Widget _questRow(String icon, String text) => Row(
-        children: [
-          Text(icon, style: const TextStyle(fontSize: 12)),
-          const SizedBox(width: 8),
-          Text(text,
-              style: AppTextStyles.body
-                  .copyWith(color: AppColors.cyan, fontSize: 7)),
-        ],
-      );
+    children: [
+      Text(icon, style: const TextStyle(fontSize: 12)),
+      const SizedBox(width: 8),
+      Text(
+        text,
+        style: AppTextStyles.body.copyWith(color: AppColors.cyan, fontSize: 8),
+      ),
+    ],
+  );
 }
 
 class _QuestAccepted extends StatelessWidget {
@@ -156,28 +176,38 @@ class _QuestAccepted extends StatelessWidget {
         // Accepted chip
         Container(
           padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.sm, vertical: 4),
+            horizontal: AppSpacing.sm,
+            vertical: 4,
+          ),
           decoration: BoxDecoration(
             color: AppColors.charcoal,
             border: Border.all(color: AppColors.cyan, width: 1),
           ),
-          child: Text('✓ ACCEPTED BY BOTH',
-              style: AppTextStyles.caption
-                  .copyWith(color: AppColors.cyan, fontSize: 6)),
+          child: Text(
+            '✓ ACCEPTED BY BOTH',
+            style: AppTextStyles.caption.copyWith(
+              color: AppColors.cyan,
+              fontSize: 8,
+            ),
+          ),
         ),
         const SizedBox(height: AppSpacing.md),
         // Countdown
-        Text(controller.questCountdown,
-            textAlign: TextAlign.center,
-            style: AppTextStyles.header.copyWith(
-                color: AppColors.yellow,
-                fontSize: 18,
-                shadows: [
-                  const Shadow(
-                      color: Colors.black,
-                      offset: Offset(3, 3),
-                      blurRadius: 0)
-                ])),
+        Text(
+          controller.questCountdown,
+          textAlign: TextAlign.center,
+          style: AppTextStyles.header.copyWith(
+            color: AppColors.yellow,
+            fontSize: 18,
+            shadows: [
+              const Shadow(
+                color: Colors.black,
+                offset: Offset(3, 3),
+                blurRadius: 0,
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: AppSpacing.md),
         // Progress bar
         Container(
@@ -195,10 +225,13 @@ class _QuestAccepted extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.xs),
         Text(
-            '${(controller.questProgress * 100).toStringAsFixed(0)}% JOURNEY COMPLETED',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.caption
-                .copyWith(color: AppColors.gray, fontSize: 5)),
+          '${(controller.questProgress * 100).toStringAsFixed(0)}% JOURNEY COMPLETED',
+          textAlign: TextAlign.center,
+          style: AppTextStyles.caption.copyWith(
+            color: AppColors.gray,
+            fontSize: 7,
+          ),
+        ),
       ],
     );
   }

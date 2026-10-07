@@ -27,6 +27,11 @@ class AudioService {
     final prefs = await SharedPreferences.getInstance();
     _bgmEnabled = prefs.getBool(_keyBgm) ?? false;
     _sfxEnabled = prefs.getBool(_keySfx) ?? true;
+    await _sfxPlayer.setAudioContext(
+      AudioContextConfig(
+        focus: AudioContextConfigFocus.mixWithOthers,
+      ).build(),
+    );
     await _bgmPlayer.setReleaseMode(ReleaseMode.loop);
     await _bgmPlayer.setVolume(0.35);
     if (_bgmEnabled) await _startBgm();

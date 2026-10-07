@@ -17,6 +17,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/sprite_selector.dart';
 import '../../../core/services/audio_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -88,8 +89,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             backgroundColor: AppColors.coral,
             content: Text(
               'NAME CANNOT BE EMPTY.',
-              style: AppTextStyles.caption
-                  .copyWith(color: AppColors.yellow),
+              style: AppTextStyles.caption.copyWith(color: AppColors.yellow),
             ),
             duration: const Duration(seconds: 2),
           ),
@@ -123,7 +123,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     if (mounted) setState(() => _saving = false);
 
-    if (saveSucceeded && city.isNotEmpty &&
+    if (saveSucceeded &&
+        city.isNotEmpty &&
         (cityChanged || _me!.homeLocation == null)) {
       final sequence = ++_cityResolveSequence;
       unawaited(_resolveHomeCity(uid, city, sequence));
@@ -201,14 +202,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (!confirmed || !mounted) return;
     await context.read<CoupleService>().unlinkPartners(
-          coupleId: _me!.coupleId!,
-          memberUids: _couple!.memberUids,
-        );
-    if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil(
-      AppRoutes.pairing,
-      (_) => false,
+      coupleId: _me!.coupleId!,
+      memberUids: _couple!.memberUids,
     );
+    if (!mounted) return;
+    Navigator.of(context)
+        .pushNamedAndRemoveUntil(AppRoutes.pairing, (_) => false);
   }
 
   Future<void> _logout() async {
@@ -223,9 +222,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_loading) {
       return const Scaffold(
         backgroundColor: AppColors.navy,
-        body: Center(
-          child: CircularProgressIndicator(color: AppColors.yellow),
-        ),
+        body: Center(child: CircularProgressIndicator(color: AppColors.yellow)),
       );
     }
 
@@ -234,7 +231,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.lg,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -247,9 +246,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: AppColors.cyan,
                   shadows: const [
                     Shadow(
-                        color: Colors.black,
-                        offset: Offset(3, 3),
-                        blurRadius: 0),
+                      color: Colors.black,
+                      offset: Offset(3, 3),
+                      blurRadius: 0,
+                    ),
                   ],
                 ),
               ),
@@ -263,45 +263,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Text('DISPLAY NAME', style: AppTextStyles.label),
                     const SizedBox(height: 6),
-                    _InsetTextField(
-                        controller: _nameCtrl, hint: 'YOUR NAME'),
+                    _InsetTextField(controller: _nameCtrl, hint: 'YOUR NAME'),
                     const SizedBox(height: AppSpacing.md),
                     Text('HERO SPRITE', style: AppTextStyles.label),
                     const SizedBox(height: 6),
-                    GridView.count(
-                      crossAxisCount: 4,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      children: SpriteOptions.all.map((sprite) {
-                        final sel = sprite == _selectedSprite;
-                        return GestureDetector(
-                          onTap: () =>
-                              setState(() => _selectedSprite = sprite),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: AppColors.purple,
-                              border: Border.all(
-                                color: sel
-                                    ? AppColors.yellow
-                                    : Colors.black,
-                                width: sel ? 3 : 2,
-                              ),
-                              boxShadow: const [
-                                BoxShadow(
-                                    color: Colors.black,
-                                    offset: Offset(2, 2),
-                                    blurRadius: 0),
-                              ],
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(sprite,
-                                style: TextStyle(
-                                    fontSize: sel ? 24 : 20)),
-                          ),
-                        );
-                      }).toList(),
+                    SpriteSelector(
+                      selectedId: _selectedSprite ?? SpriteOptions.fallback,
+                      onSelected: (sprite) =>
+                          setState(() => _selectedSprite = sprite),
                     ),
                   ],
                 ),
@@ -327,7 +296,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Text(
                       'USED WHEN GPS IS OFF. SHOWN AS APPROXIMATE DISTANCE.',
                       style: AppTextStyles.caption.copyWith(
-                          color: AppColors.gray, fontSize: 5),
+                        color: AppColors.gray,
+                        fontSize: 7,
+                      ),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     _Row(
@@ -395,19 +366,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           border: Border.all(color: Colors.black, width: 2),
                         ),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         child: Row(
-                          mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
                               _couple!.pairingCode,
                               style: AppTextStyles.body.copyWith(
-                                  fontSize: 10, color: Colors.white),
+                                fontSize: 10,
+                                color: Colors.white,
+                              ),
                             ),
-                            Text('(REFERENCE ONLY)',
-                                style: AppTextStyles.caption.copyWith(
-                                    fontSize: 5, color: AppColors.gray)),
+                            Text(
+                              '(REFERENCE ONLY)',
+                              style: AppTextStyles.caption.copyWith(
+                                fontSize: 5,
+                                color: AppColors.gray,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -438,10 +416,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onPressed: _unlink,
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    PixelButton(
-                      label: '[ LOGOUT ]',
-                      onPressed: _logout,
-                    ),
+                    PixelButton(label: '[ LOGOUT ]', onPressed: _logout),
                   ],
                 ),
               ),
@@ -498,8 +473,10 @@ class _Section extends StatelessWidget {
         children: [
           Text(
             title,
-            style: AppTextStyles.label
-                .copyWith(color: AppColors.cyan, fontSize: 8),
+            style: AppTextStyles.label.copyWith(
+              color: AppColors.cyan,
+              fontSize: 8,
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           child,
@@ -528,12 +505,17 @@ class _InsetTextField extends StatelessWidget {
       child: TextField(
         controller: controller,
         textCapitalization: TextCapitalization.characters,
-        style: AppTextStyles.body.copyWith(color: AppColors.yellow, fontSize: 8),
+        style: AppTextStyles.body.copyWith(
+          color: AppColors.yellow,
+          fontSize: 8,
+        ),
         cursorColor: AppColors.cyan,
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: AppTextStyles.body
-              .copyWith(color: const Color(0xFF555577), fontSize: 8),
+          hintStyle: AppTextStyles.body.copyWith(
+            color: const Color(0xFF555577),
+            fontSize: 8,
+          ),
           border: InputBorder.none,
           isDense: true,
           contentPadding: EdgeInsets.zero,
@@ -547,8 +529,11 @@ class _ToggleRow extends StatelessWidget {
   final String label;
   final bool value;
   final ValueChanged<bool> onChanged;
-  const _ToggleRow(
-      {required this.label, required this.value, required this.onChanged});
+  const _ToggleRow({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -556,9 +541,13 @@ class _ToggleRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Expanded(
-          child: Text(label,
-              style: AppTextStyles.body
-                  .copyWith(color: AppColors.cyan, fontSize: 7)),
+          child: Text(
+            label,
+            style: AppTextStyles.body.copyWith(
+              color: AppColors.cyan,
+              fontSize: 7,
+            ),
+          ),
         ),
         _PixelSwitch(value: value, onChanged: onChanged),
       ],
@@ -586,8 +575,9 @@ class _PixelSwitch extends StatelessWidget {
           border: Border.all(color: Colors.black, width: 2),
         ),
         child: Row(
-          mainAxisAlignment:
-              value ? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisAlignment: value
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
           children: [
             Container(
               width: 14,
@@ -605,8 +595,11 @@ class _UnitChip extends StatelessWidget {
   final String label;
   final bool active;
   final VoidCallback onTap;
-  const _UnitChip(
-      {required this.label, required this.active, required this.onTap});
+  const _UnitChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -620,16 +613,19 @@ class _UnitChip extends StatelessWidget {
           boxShadow: active
               ? const [
                   BoxShadow(
-                      color: Colors.black,
-                      offset: Offset(2, 2),
-                      blurRadius: 0)
+                    color: Colors.black,
+                    offset: Offset(2, 2),
+                    blurRadius: 0,
+                  ),
                 ]
               : null,
         ),
         child: Text(
           label,
           style: AppTextStyles.caption.copyWith(
-              fontSize: 7, color: active ? Colors.black : AppColors.cyan),
+            fontSize: 7,
+            color: active ? Colors.black : AppColors.cyan,
+          ),
         ),
       ),
     );
@@ -646,9 +642,13 @@ class _Row extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label,
-            style:
-                AppTextStyles.body.copyWith(color: AppColors.cyan, fontSize: 7)),
+        Text(
+          label,
+          style: AppTextStyles.body.copyWith(
+            color: AppColors.cyan,
+            fontSize: 7,
+          ),
+        ),
         child,
       ],
     );
@@ -658,12 +658,12 @@ class _Row extends StatelessWidget {
 // Add toMap() to CoupleModel if missing — used by _setUnit above
 extension CoupleModelX on CoupleModel {
   Map<String, dynamic> toMap() => {
-        'memberUids': memberUids,
-        'pairingCode': pairingCode,
-        'status': status.name,
-        'unitPref': unitPref,
-        'linkedAt': linkedAt,
-        'settings': settings.toMap(),
-        'reunionQuest': reunionQuest.toMap(),
-      };
+    'memberUids': memberUids,
+    'pairingCode': pairingCode,
+    'status': status.name,
+    'unitPref': unitPref,
+    'linkedAt': linkedAt,
+    'settings': settings.toMap(),
+    'reunionQuest': reunionQuest.toMap(),
+  };
 }

@@ -52,6 +52,11 @@ class VaultController extends ChangeNotifier {
   StreamSubscription? _partnerProfileSub;
   final Map<String, CapsuleModel> _sealedCapsules = {};
   final Map<String, CapsuleModel> _unlockedCapsules = {};
+  // A document changing status is removed from one filtered query before the
+  // other query is guaranteed to deliver it. Keep its last known value visible
+  // until a direct read or the destination query confirms the new status.
+  final Map<String, CapsuleModel> _pendingCapsuleTransitions = {};
+  final Set<String> _resolvingCapsuleTransitions = {};
   bool _sealedSnapshotReceived = false;
   bool _unlockedSnapshotReceived = false;
   bool _sealedStreamFailed = false;
@@ -189,6 +194,8 @@ class VaultController extends ChangeNotifier {
     _partnerProfileSub?.cancel();
     _sealedCapsules.clear();
     _unlockedCapsules.clear();
+    _pendingCapsuleTransitions.clear();
+    _resolvingCapsuleTransitions.clear();
     _sealedSnapshotReceived = false;
     _unlockedSnapshotReceived = false;
     _sealedStreamFailed = false;
@@ -225,12 +232,21 @@ class VaultController extends ChangeNotifier {
         )
         .listen(
       (snap) {
+        final incoming = <String, CapsuleModel>{
+          for (final d in snap.docs) d.id: CapsuleModel.fromMap(d.id, d.data()),
+        };
+        final removed = _sealedCapsules.entries
+            .where((entry) => !incoming.containsKey(entry.key))
+            .toList(growable: false);
         _sealedCapsules
           ..clear()
-          ..addEntries(snap.docs.map((d) => MapEntry(
-                d.id,
-                CapsuleModel.fromMap(d.id, d.data()),
-              )));
+          ..addAll(incoming);
+        for (final entry in removed) {
+          if (!_unlockedCapsules.containsKey(entry.key)) {
+            _pendingCapsuleTransitions.putIfAbsent(entry.key, () => entry.value);
+            _resolveCapsuleTransition(entry.key);
+          }
+        }
         _sealedSnapshotReceived = true;
         _mergeCapsuleSnapshots();
       },
@@ -250,6 +266,9 @@ class VaultController extends ChangeNotifier {
                 d.id,
                 CapsuleModel.fromMap(d.id, d.data()),
               )));
+        for (final id in _unlockedCapsules.keys) {
+          _pendingCapsuleTransitions.remove(id);
+        }
         _unlockedSnapshotReceived = true;
         _mergeCapsuleSnapshots();
       },
@@ -258,7 +277,11 @@ class VaultController extends ChangeNotifier {
   }
 
   void _mergeCapsuleSnapshots() {
-    _allCapsules = [..._sealedCapsules.values, ..._unlockedCapsules.values]
+    _allCapsules = [
+      ..._pendingCapsuleTransitions.values,
+      ..._sealedCapsules.values,
+      ..._unlockedCapsules.values,
+    ]
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final sealedSettled = _sealedSnapshotReceived || _sealedStreamFailed;
     final unlockedSettled = _unlockedSnapshotReceived || _unlockedStreamFailed;
@@ -309,6 +332,9 @@ class VaultController extends ChangeNotifier {
 
   Future<void> _checkAutoUnlock() async {
     if (coupleId == null) return;
+    for (final id in List<String>.of(_pendingCapsuleTransitions.keys)) {
+      _resolveCapsuleTransition(id);
+    }
     final now = DateTime.now();
     for (final capsule in List.of(_allCapsules)) {
       if (capsule.triggerMode == CapsuleTriggerMode.dateRelease &&
@@ -327,6 +353,49 @@ class VaultController extends ChangeNotifier {
           _unlockingCapsuleIds.remove(capsule.capsuleId);
         }
       }
+    }
+  }
+
+  Future<void> _resolveCapsuleTransition(String capsuleId) async {
+    final path = coupleId;
+    if (path == null ||
+        !_pendingCapsuleTransitions.containsKey(capsuleId) ||
+        !_resolvingCapsuleTransitions.add(capsuleId)) {
+      return;
+    }
+    try {
+      final snapshot = await _fs
+          .doc('couples/$path/capsules/$capsuleId')
+          .get()
+          .timeout(const Duration(seconds: 8));
+      // A listener may have delivered the new status during the read.
+      if (_unlockedCapsules.containsKey(capsuleId)) {
+        _pendingCapsuleTransitions.remove(capsuleId);
+      } else if (!snapshot.exists || snapshot.data() == null) {
+        _pendingCapsuleTransitions.remove(capsuleId);
+      } else {
+        final current = CapsuleModel.fromMap(capsuleId, snapshot.data()!);
+        _pendingCapsuleTransitions.remove(capsuleId);
+        switch (current.status) {
+          case CapsuleStatus.sealed:
+            _sealedCapsules[capsuleId] = current;
+            break;
+          case CapsuleStatus.unlocked:
+            _unlockedCapsules[capsuleId] = current;
+            break;
+          case CapsuleStatus.cancelled:
+            _sealedCapsules.remove(capsuleId);
+            _unlockedCapsules.remove(capsuleId);
+            break;
+        }
+      }
+    } catch (e) {
+      // Keep the last known chest in the combined list and retry on the next
+      // unlock tick. A transient read failure must not make it disappear.
+      debugPrint('Vault transition refresh failed for $capsuleId: $e');
+    } finally {
+      _resolvingCapsuleTransitions.remove(capsuleId);
+      _mergeCapsuleSnapshots();
     }
   }
 

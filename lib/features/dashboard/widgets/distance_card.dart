@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/sprite_avatar.dart';
 import '../controllers/dashboard_controller.dart';
 
 class DistanceCard extends StatelessWidget {
@@ -20,14 +22,19 @@ class DistanceCard extends StatelessWidget {
           BoxShadow(color: Colors.black, offset: Offset(5, 5), blurRadius: 0),
         ],
       ),
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.xl,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             'OVERWORLD DISTANCE',
-            style:
-                AppTextStyles.label.copyWith(color: AppColors.cyan, fontSize: 9),
+            style: AppTextStyles.label.copyWith(
+              color: AppColors.cyan,
+              fontSize: 11,
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           _buildBody(context),
@@ -39,15 +46,13 @@ class DistanceCard extends StatelessWidget {
   Widget _buildBody(BuildContext context) {
     return switch (controller.distanceState) {
       DistanceState.loading => const Center(
-          child: CircularProgressIndicator(color: AppColors.yellow),
-        ),
-      DistanceState.bothOff  => _BothOffState(controller: controller),
+        child: CircularProgressIndicator(color: AppColors.yellow),
+      ),
+      DistanceState.bothOff => _BothOffState(controller: controller),
       DistanceState.together => _TogetherState(controller: controller),
-      DistanceState.networkFail =>
-        _NetworkFailState(controller: controller),
+      DistanceState.networkFail => _NetworkFailState(controller: controller),
       DistanceState.bothLive ||
-      DistanceState.partial  =>
-        _LiveDistanceState(controller: controller),
+      DistanceState.partial => _LiveDistanceState(controller: controller),
     };
   }
 }
@@ -71,27 +76,27 @@ class _SpriteRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         // My sprite — left
-        _HeroSprite(emoji: mySprite, borderColor: AppColors.coral),
+        _HeroSprite(spriteId: mySprite, borderColor: AppColors.coral),
         const SizedBox(width: AppSpacing.sm),
         Expanded(child: center),
         const SizedBox(width: AppSpacing.sm),
         // Partner sprite — right
-        _HeroSprite(emoji: partnerSprite, borderColor: AppColors.cyan),
+        _HeroSprite(spriteId: partnerSprite, borderColor: AppColors.cyan),
       ],
     );
   }
 }
 
 class _HeroSprite extends StatelessWidget {
-  final String emoji;
+  final String spriteId;
   final Color borderColor;
-  const _HeroSprite({required this.emoji, required this.borderColor});
+  const _HeroSprite({required this.spriteId, required this.borderColor});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 48,
-      height: 48,
+      width: 64,
+      height: 64,
       decoration: BoxDecoration(
         color: AppColors.charcoal,
         border: Border.all(color: borderColor, width: 2),
@@ -100,7 +105,7 @@ class _HeroSprite extends StatelessWidget {
         ],
       ),
       alignment: Alignment.center,
-      child: Text(emoji, style: const TextStyle(fontSize: 24)),
+      child: SpriteAvatar(spriteId: spriteId, size: 60),
     );
   }
 }
@@ -130,7 +135,7 @@ class _LiveDistanceState extends StatelessWidget {
             textAlign: TextAlign.center,
             style: AppTextStyles.header.copyWith(
               color: AppColors.yellow,
-              fontSize: 18,
+              fontSize: 21,
               height: 1.35,
               shadows: const [
                 Shadow(
@@ -146,24 +151,59 @@ class _LiveDistanceState extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           Container(
             padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm, vertical: 4),
+              horizontal: AppSpacing.sm,
+              vertical: 4,
+            ),
             decoration: BoxDecoration(
               color: AppColors.charcoal,
               border: Border.all(color: AppColors.amber, width: 1),
             ),
             child: Text(
               'APPROX — ${controller.partner?.displayName?.toUpperCase() ?? 'PARTNER'}\'S GPS OFF',
-              style: AppTextStyles.caption
-                  .copyWith(color: AppColors.amber, fontSize: 6),
+              style: AppTextStyles.caption.copyWith(
+                color: AppColors.amber,
+                fontSize: 8,
+              ),
             ),
           ),
         ],
         const SizedBox(height: AppSpacing.sm),
-        Text(
-          '${controller.myCity.isEmpty ? 'HOME CITY NOT SET' : controller.myCity} - - - + - - - ${controller.partnerCity.isEmpty ? 'HOME CITY NOT SET' : controller.partnerCity}${isPartial ? ' (APPROX.)' : ''}',
-          textAlign: TextAlign.center,
-          style:
-              AppTextStyles.caption.copyWith(color: Colors.white54, fontSize: 5),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                controller.myCity.isEmpty
+                    ? 'HOME CITY NOT SET'
+                    : controller.myCity,
+                textAlign: TextAlign.right,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.caption.copyWith(
+                  color: Colors.white70,
+                  fontSize: 7,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+              child: Text(
+                '\u2194',
+                style: AppTextStyles.label.copyWith(fontSize: 9),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                '${controller.partnerCity.isEmpty ? 'HOME CITY NOT SET' : controller.partnerCity}${isPartial ? ' (APPROX.)' : ''}',
+                textAlign: TextAlign.left,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.caption.copyWith(
+                  color: Colors.white70,
+                  fontSize: 7,
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: AppSpacing.sm),
         Container(
@@ -176,7 +216,7 @@ class _LiveDistanceState extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 'TOGETHER: ${controller.daysTogetherthisYear} DAYS IN ${DateTime.now().year}',
-                style: AppTextStyles.caption.copyWith(fontSize: 6),
+                style: AppTextStyles.caption.copyWith(fontSize: 8),
               ),
             ],
           ),
@@ -185,8 +225,9 @@ class _LiveDistanceState extends StatelessWidget {
     );
   }
 
-  String _fmt(double km) =>
-      km.toStringAsFixed(0).replaceAllMapped(
+  String _fmt(double km) => km
+      .toStringAsFixed(0)
+      .replaceAllMapped(
         RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
         (m) => '${m[1]},',
       );
@@ -208,30 +249,65 @@ class _BothOffState extends StatelessWidget {
             textAlign: TextAlign.center,
             style: AppTextStyles.header.copyWith(
               color: AppColors.yellow,
-              fontSize: 12,
+              fontSize: 16,
               height: 1.4,
             ),
           ),
         ),
         const SizedBox(height: AppSpacing.md),
-        if (controller.myCity.isNotEmpty || controller.partnerCity.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: Text(
-              '${controller.myCity.isEmpty ? 'HOME CITY NOT SET' : controller.myCity}  ↔  ${controller.partnerCity.isEmpty ? 'HOME CITY NOT SET' : controller.partnerCity}',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.caption
-                  .copyWith(color: AppColors.cyan, fontSize: 6),
-            ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  controller.myCity.isEmpty
+                      ? 'HOME CITY NOT SET'
+                      : controller.myCity,
+                  textAlign: TextAlign.right,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.caption.copyWith(
+                    color: AppColors.cyan,
+                    fontSize: 7,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+                child: Text(
+                  '\u2194',
+                  style: AppTextStyles.label.copyWith(fontSize: 9),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  controller.partnerCity.isEmpty
+                      ? 'HOME CITY NOT SET'
+                      : controller.partnerCity,
+                  textAlign: TextAlign.left,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.caption.copyWith(
+                    color: AppColors.cyan,
+                    fontSize: 7,
+                  ),
+                ),
+              ),
+            ],
           ),
+        ),
         const SizedBox(height: AppSpacing.sm),
         const Icon(Icons.location_off, size: 28, color: AppColors.coral),
         const SizedBox(height: AppSpacing.md),
         Text(
           'TURN ON LOCATION TO SEE\nYOUR LIVE DISTANCE',
           textAlign: TextAlign.center,
-          style: AppTextStyles.caption
-              .copyWith(color: Colors.white54, height: 1.8, fontSize: 6),
+          style: AppTextStyles.caption.copyWith(
+            color: Colors.white70,
+            height: 1.8,
+            fontSize: 8,
+          ),
         ),
         const SizedBox(height: AppSpacing.lg),
         PixelButton(
@@ -302,21 +378,28 @@ class _NetworkFailState extends StatelessWidget {
         Text(
           "COULDN'T REFRESH LOCATION.\nSHOWING LAST KNOWN DISTANCE.",
           textAlign: TextAlign.center,
-          style: AppTextStyles.caption
-              .copyWith(color: AppColors.amber, height: 1.8, fontSize: 6),
+          style: AppTextStyles.caption.copyWith(
+            color: AppColors.amber,
+            height: 1.8,
+            fontSize: 8,
+          ),
         ),
         const SizedBox(height: AppSpacing.sm),
         Text(
           '${controller.displayDistance?.toStringAsFixed(0) ?? '---'} ${controller.distanceUnit} APART',
           textAlign: TextAlign.center,
-          style:
-              AppTextStyles.body.copyWith(color: AppColors.yellow, fontSize: 12),
+          style: AppTextStyles.body.copyWith(
+            color: AppColors.yellow,
+            fontSize: 12,
+          ),
         ),
         if (controller.lastUpdated != null)
           Text(
             'LAST UPDATED: ${_ago(controller.lastUpdated!)}',
-            style:
-                AppTextStyles.caption.copyWith(color: AppColors.gray, fontSize: 5),
+            style: AppTextStyles.caption.copyWith(
+              color: AppColors.gray,
+              fontSize: 7,
+            ),
           ),
         const SizedBox(height: AppSpacing.md),
         PixelButton(

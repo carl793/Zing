@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+
 import '../../../core/models/capsule_model.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_dashed_border.dart';
-import '../../../core/widgets/pixel_padlock.dart';
+import '../../../core/widgets/sprite_avatar.dart';
 import '../controllers/vault_controller.dart';
 
 class ChestCard extends StatelessWidget {
@@ -32,11 +33,7 @@ class ChestCard extends StatelessWidget {
         color: AppColors.purple,
         border: Border.all(color: Colors.black, width: 2),
         boxShadow: const [
-          BoxShadow(
-            color: Colors.black,
-            offset: Offset(3, 3),
-            blurRadius: 0,
-          ),
+          BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
         ],
       ),
       child: Column(
@@ -48,14 +45,19 @@ class ChestCard extends StatelessWidget {
             child: Text(
               '${ctrl.creatorLabel(capsule)} ▸ ${ctrl.recipientLabel(capsule)}',
               style: AppTextStyles.caption.copyWith(
-                fontSize: 5,
+                fontSize: 7,
                 color: isMine ? AppColors.coral : AppColors.cyan,
               ),
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
           // Chest icon
-          const PixelPadlock(size: 44),
+          const SpriteAssetIcon(
+            assetPath: 'assets/sprites/mystery_box.svg',
+            fallbackPath: 'assets/sprites/mystery_box_96.png',
+            size: 60,
+            semanticsLabel: 'Mystery box chest',
+          ),
           const SizedBox(height: AppSpacing.sm),
           // Title
           Text(
@@ -63,7 +65,7 @@ class ChestCard extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.body.copyWith(fontSize: 7, height: 1.5),
+            style: AppTextStyles.body.copyWith(fontSize: 9, height: 1.5),
           ),
           const SizedBox(height: AppSpacing.sm),
           // Status badge
@@ -107,8 +109,19 @@ class _StatusBadge extends StatelessWidget {
         capsule.unlockDate != null) {
       final d = capsule.unlockDate!;
       final months = [
-        '', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-        'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+        '',
+        'JAN',
+        'FEB',
+        'MAR',
+        'APR',
+        'MAY',
+        'JUN',
+        'JUL',
+        'AUG',
+        'SEP',
+        'OCT',
+        'NOV',
+        'DEC',
       ];
       return _badge(
         'UNLOCKS ${months[d.month]} ${d.day.toString().padLeft(2, '0')}',
@@ -146,7 +159,7 @@ class _StatusBadge extends StatelessWidget {
       child: Text(
         label,
         textAlign: TextAlign.center,
-        style: AppTextStyles.caption.copyWith(fontSize: 5, color: textColor),
+        style: AppTextStyles.caption.copyWith(fontSize: 7, color: textColor),
       ),
     );
   }

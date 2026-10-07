@@ -9,6 +9,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/sprite_avatar.dart';
 import '../../../core/widgets/pixel_modal_shell.dart';
 import '../controllers/vault_controller.dart';
 import '../modals/chest_locked_date_modal.dart';
@@ -63,7 +64,7 @@ class _VaultView extends StatelessWidget {
                   Text(
                     'TREASURE\nVAULT',
                     style: AppTextStyles.header.copyWith(
-                      fontSize: 16,
+                      fontSize: 19,
                       color: AppColors.cyan,
                       height: 1.5,
                       shadows: const [
@@ -95,14 +96,13 @@ class _VaultView extends StatelessWidget {
                         Text(
                           ctrl.error!,
                           textAlign: TextAlign.center,
-                          style: AppTextStyles.caption
-                              .copyWith(color: AppColors.coral, height: 1.8),
+                          style: AppTextStyles.caption.copyWith(
+                            color: AppColors.coral,
+                            height: 1.8,
+                          ),
                         ),
                         const SizedBox(height: AppSpacing.lg),
-                        PixelButton(
-                          label: '[ RETRY ]',
-                          onPressed: ctrl.retry,
-                        ),
+                        PixelButton(label: '[ RETRY ]', onPressed: ctrl.retry),
                       ],
                     ),
                   ),
@@ -123,37 +123,37 @@ class _VaultView extends StatelessWidget {
                 Expanded(
                   child: capsules.isEmpty
                       ? (isEmpty &&
-                              !ctrl.showArchived &&
-                              ctrl.filter == VaultFilter.all &&
-                              ctrl.senderFilter == VaultSenderFilter.all &&
-                              ctrl.statusFilter == VaultStatusFilter.all
-                          ? _EmptyVault(ctrl: ctrl)
-                          : Center(
-                              child: Text(
-                                ctrl.showArchived
-                                    ? 'NO ARCHIVED CHESTS.'
-                                    : 'NO CHESTS IN THIS FILTER.',
-                                textAlign: TextAlign.center,
-                                style: AppTextStyles.caption
-                                    .copyWith(color: AppColors.gray),
-                              ),
-                            ))
+                                !ctrl.showArchived &&
+                                ctrl.filter == VaultFilter.all &&
+                                ctrl.senderFilter == VaultSenderFilter.all &&
+                                ctrl.statusFilter == VaultStatusFilter.all
+                            ? _EmptyVault(ctrl: ctrl)
+                            : Center(
+                                child: Text(
+                                  ctrl.showArchived
+                                      ? 'NO ARCHIVED CHESTS.'
+                                      : 'NO CHESTS IN THIS FILTER.',
+                                  textAlign: TextAlign.center,
+                                  style: AppTextStyles.caption.copyWith(
+                                    color: AppColors.gray,
+                                  ),
+                                ),
+                              ))
                       : GridView.builder(
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: 12,
-                            crossAxisSpacing: 12,
-                            childAspectRatio: 0.78,
-                          ),
+                                crossAxisCount: 2,
+                                mainAxisSpacing: 12,
+                                crossAxisSpacing: 12,
+                                childAspectRatio: 0.78,
+                              ),
                           itemCount: capsules.length,
                           itemBuilder: (ctx, i) {
                             final capsule = capsules[i];
                             return ChestCard(
                               capsule: capsule,
                               ctrl: ctrl,
-                              onTap: () =>
-                                  _openChest(context, ctrl, capsule),
+                              onTap: () => _openChest(context, ctrl, capsule),
                               onLongPress: () =>
                                   _longPress(context, ctrl, capsule),
                             );
@@ -244,23 +244,31 @@ class _NewChestButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm,
+          vertical: AppSpacing.md,
         ),
         decoration: BoxDecoration(
           color: AppColors.yellow,
           border: Border.all(color: Colors.black, width: 2),
           boxShadow: const [
-            BoxShadow(
-              color: Colors.black,
-              offset: Offset(3, 3),
-              blurRadius: 0,
-            ),
+            BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
           ],
         ),
-        child: Text(
-          '+ NEW\nCHEST',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.button.copyWith(fontSize: 7, height: 1.5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SpriteAssetIcon(
+              assetPath: 'assets/sprites/mystery_box.svg',
+              fallbackPath: 'assets/sprites/mystery_box_96.png',
+              size: 40,
+              semanticsLabel: 'Mystery box chest',
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Text(
+              '+ NEW\nCHEST',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.button.copyWith(fontSize: 9, height: 1.5),
+            ),
+          ],
         ),
       ),
     );
@@ -276,7 +284,12 @@ class _EmptyVault extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Icon(Icons.lock_outline, size: 44, color: AppColors.gray),
+        const SpriteAssetIcon(
+          assetPath: 'assets/sprites/mystery_box.svg',
+          fallbackPath: 'assets/sprites/mystery_box_96.png',
+          size: 64,
+          semanticsLabel: 'Mystery box chest',
+        ),
         const SizedBox(height: AppSpacing.lg),
         Text(
           'NO TREASURES\nYET',
@@ -285,11 +298,7 @@ class _EmptyVault extends StatelessWidget {
             color: AppColors.yellow,
             fontSize: 14,
             shadows: const [
-              Shadow(
-                color: Colors.black,
-                offset: Offset(3, 3),
-                blurRadius: 0,
-              ),
+              Shadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
             ],
           ),
         ),
@@ -297,7 +306,10 @@ class _EmptyVault extends StatelessWidget {
         Text(
           'Lock away a memory for\nyour partner to discover\nlater.',
           textAlign: TextAlign.center,
-          style: AppTextStyles.caption.copyWith(color: AppColors.gray, height: 1.8),
+          style: AppTextStyles.caption.copyWith(
+            color: AppColors.gray,
+            height: 1.8,
+          ),
         ),
         const SizedBox(height: AppSpacing.xl),
         SizedBox(
@@ -333,13 +345,22 @@ class _ChestContextSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            capsule.isArchived ? 'ARCHIVED CHEST.' : (ctrl.isMyChest(capsule) && capsule.status == CapsuleStatus.sealed ? 'YOUR OWN SEALED CHEST.' : 'CHEST OPTIONS.'),
-            style: AppTextStyles.caption
-                .copyWith(color: AppColors.gray, fontSize: 6),
+            capsule.isArchived
+                ? 'ARCHIVED CHEST.'
+                : (ctrl.isMyChest(capsule) &&
+                          capsule.status == CapsuleStatus.sealed
+                      ? 'YOUR OWN SEALED CHEST.'
+                      : 'CHEST OPTIONS.'),
+            style: AppTextStyles.caption.copyWith(
+              color: AppColors.gray,
+              fontSize: 8,
+            ),
           ),
           const SizedBox(height: AppSpacing.lg),
           PixelButton(
-            label: capsule.isArchived ? '[ RESTORE TO VAULT ]' : '[ ARCHIVE CHEST ]',
+            label: capsule.isArchived
+                ? '[ RESTORE TO VAULT ]'
+                : '[ ARCHIVE CHEST ]',
             style: PixelButtonStyle.outline,
             backgroundColor: AppColors.charcoal,
             onPressed: () async {
@@ -347,24 +368,24 @@ class _ChestContextSheet extends StatelessWidget {
               if (context.mounted) Navigator.of(context).pop();
             },
           ),
-          if (ctrl.isMyChest(capsule) && capsule.status == CapsuleStatus.sealed) const SizedBox(height: AppSpacing.md),
           if (ctrl.isMyChest(capsule) && capsule.status == CapsuleStatus.sealed)
-          PixelButton(
-            label: '[ CANCEL CHEST ]',
-            style: PixelButtonStyle.outlineDanger,
-            backgroundColor: AppColors.charcoal,
-            onPressed: () async {
-              Navigator.of(context).pop();
-              final confirmed = await showDialog<bool>(
-                context: context,
-                barrierColor: Colors.black87,
-                builder: (_) =>
-                    _CancelDialog(chestName: capsule.title),
-              );
-              if (confirmed != true || !context.mounted) return;
-              await ctrl.cancelCapsule(capsule);
-            },
-          ),
+            const SizedBox(height: AppSpacing.md),
+          if (ctrl.isMyChest(capsule) && capsule.status == CapsuleStatus.sealed)
+            PixelButton(
+              label: '[ CANCEL CHEST ]',
+              style: PixelButtonStyle.outlineDanger,
+              backgroundColor: AppColors.charcoal,
+              onPressed: () async {
+                Navigator.of(context).pop();
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  barrierColor: Colors.black87,
+                  builder: (_) => _CancelDialog(chestName: capsule.title),
+                );
+                if (confirmed != true || !context.mounted) return;
+                await ctrl.cancelCapsule(capsule);
+              },
+            ),
         ],
       ),
     );
@@ -386,11 +407,7 @@ class _CancelDialog extends StatelessWidget {
           color: AppColors.purple,
           border: Border.all(color: AppColors.coral, width: 2),
           boxShadow: const [
-            BoxShadow(
-              color: Colors.black,
-              offset: Offset(5, 5),
-              blurRadius: 0,
-            ),
+            BoxShadow(color: Colors.black, offset: Offset(5, 5), blurRadius: 0),
           ],
         ),
         child: Column(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -57,7 +58,10 @@ class RecapStatsCard extends StatelessWidget {
         children: [
           Text(
             'MONTHLY RECAP STATS',
-            style: AppTextStyles.label.copyWith(color: AppColors.cyan, fontSize: 9),
+            style: AppTextStyles.label.copyWith(
+              color: AppColors.cyan,
+              fontSize: 9,
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           if (daysTogether == 0) _buildEmpty() else ..._buildStats(),
@@ -76,8 +80,10 @@ class RecapStatsCard extends StatelessWidget {
           Text(
             'NO MEMORIES LOGGED\nYET THIS MONTH.',
             textAlign: TextAlign.center,
-            style: AppTextStyles.caption
-                .copyWith(color: AppColors.gray, height: 1.8),
+            style: AppTextStyles.caption.copyWith(
+              color: AppColors.gray,
+              height: 1.8,
+            ),
           ),
         ],
       ),
@@ -86,11 +92,23 @@ class RecapStatsCard extends StatelessWidget {
 
   List<Widget> _buildStats() {
     return [
-      _StatLine(icon: Icons.favorite, color: AppColors.coral, text: _daysTogetherText),
+      _StatLine(
+        icon: Icons.favorite,
+        color: AppColors.coral,
+        text: _daysTogetherText,
+      ),
       const SizedBox(height: AppSpacing.sm),
-      _StatLine(icon: Icons.history, color: AppColors.cyan, text: _lastMetUpText),
+      _StatLine(
+        icon: Icons.history,
+        color: AppColors.cyan,
+        text: _lastMetUpText,
+      ),
       const SizedBox(height: AppSpacing.sm),
-      _StatLine(icon: Icons.star, color: AppColors.yellow, text: _nextMeetupText),
+      _StatLine(
+        icon: Icons.star,
+        color: AppColors.yellow,
+        text: _nextMeetupText,
+      ),
       const SizedBox(height: AppSpacing.md),
       const _DashedDivider(),
       const SizedBox(height: AppSpacing.sm),
@@ -109,7 +127,11 @@ class _StatLine extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String text;
-  const _StatLine({required this.icon, required this.color, required this.text});
+  const _StatLine({
+    required this.icon,
+    required this.color,
+    required this.text,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -120,8 +142,11 @@ class _StatLine extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: AppTextStyles.body
-                .copyWith(fontSize: 7, color: Colors.white, height: 1.6),
+            style: AppTextStyles.body.copyWith(
+              fontSize: 7,
+              color: Colors.white,
+              height: 1.6,
+            ),
           ),
         ),
       ],
@@ -156,7 +181,7 @@ class _LegendItem extends StatelessWidget {
       children: [
         swatch,
         const SizedBox(width: 5),
-        Text(label, style: AppTextStyles.caption.copyWith(fontSize: 5)),
+        Text(label, style: AppTextStyles.caption.copyWith(fontSize: 7)),
       ],
     );
   }

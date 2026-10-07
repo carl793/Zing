@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../services/audio_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
@@ -35,14 +36,13 @@ class PixelButton extends StatelessWidget {
     final Color fill = disabled
         ? const Color(0xFF555555)
         : backgroundColor ??
-            switch (style) {
-              PixelButtonStyle.coral => AppColors.coral,
-              PixelButtonStyle.yellow => AppColors.yellow,
-              PixelButtonStyle.cyan => AppColors.cyan,
-              PixelButtonStyle.outline ||
-              PixelButtonStyle.outlineDanger =>
-                Colors.transparent,
-            };
+              switch (style) {
+                PixelButtonStyle.coral => AppColors.coral,
+                PixelButtonStyle.yellow => AppColors.yellow,
+                PixelButtonStyle.cyan => AppColors.cyan,
+                PixelButtonStyle.outline ||
+                PixelButtonStyle.outlineDanger => Colors.transparent,
+              };
 
     final Color textColor = disabled
         ? const Color(0xFF888888)
@@ -66,14 +66,13 @@ class PixelButton extends StatelessWidget {
               ? []
               : [
                   BoxShadow(
-                    color:
-                        _isOutline ? accent.withOpacity(0.4) : Colors.black,
+                    color: _isOutline ? accent.withOpacity(0.4) : Colors.black,
                     offset: const Offset(4, 4),
                     blurRadius: 0,
                   ),
                 ],
         ),
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
+        padding: const EdgeInsets.symmetric(vertical: 19, horizontal: 12),
         alignment: Alignment.center,
         child: Text(
           label,

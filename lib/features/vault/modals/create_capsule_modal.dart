@@ -9,6 +9,7 @@ import '../../../core/widgets/pixel_button.dart';
 import '../../../core/widgets/pixel_error_box.dart';
 import '../../../core/widgets/pixel_inset_field.dart';
 import '../../../core/widgets/pixel_modal_shell.dart';
+import '../../../core/widgets/sprite_avatar.dart';
 import '../controllers/vault_controller.dart';
 
 class CreateCapsuleModal extends StatefulWidget {
@@ -115,6 +116,15 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const Center(
+            child: SpriteAssetIcon(
+              assetPath: 'assets/sprites/mystery_box.svg',
+              fallbackPath: 'assets/sprites/mystery_box_96.png',
+              size: 44,
+              semanticsLabel: 'Mystery box chest',
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
           // Trigger mode tabs
           Row(
             children: [

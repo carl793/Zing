@@ -7,6 +7,8 @@ import '../../../core/widgets/pixel_button.dart';
 import '../../../core/widgets/onboarding_progress_bar.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/constants/sprite_options.dart';
+import '../../../core/widgets/sprite_selector.dart';
 
 const kPresetSprites = ['🐇', '👻', '🦊', '🐍', '🦄', '🐢', '🌞', '🌡️'];
 
@@ -17,7 +19,7 @@ class SpriteSelectScreen extends StatefulWidget {
 }
 
 class _SpriteSelectScreenState extends State<SpriteSelectScreen> {
-  int _selected = 0;
+  String _selectedSprite = SpriteOptions.fallback;
   final _name = TextEditingController();
   bool _saving = false;
   String? _googleEmail;
@@ -48,7 +50,7 @@ class _SpriteSelectScreenState extends State<SpriteSelectScreen> {
     await authService.saveProfile(
       uid: authService.currentUser!.uid,
       displayName: name,
-      avatarSpriteId: kPresetSprites[_selected],
+      avatarSpriteId: _selectedSprite,
     );
     if (!mounted) return;
     // pushReplacementNamed so back button cannot return here
@@ -86,35 +88,9 @@ class _SpriteSelectScreenState extends State<SpriteSelectScreen> {
                     style: AppTextStyles.caption.copyWith(height: 1.8)),
                 const SizedBox(height: AppSpacing.xl),
 
-                GridView.count(
-                  crossAxisCount: 4,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: AppSpacing.sm,
-                  crossAxisSpacing: AppSpacing.sm,
-                  children: List.generate(kPresetSprites.length, (i) {
-                    final selected = i == _selected;
-                    return GestureDetector(
-                      onTap: () => setState(() => _selected = i),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.purple,
-                          border: Border.all(
-                              color: selected ? AppColors.yellow : Colors.black,
-                              width: selected ? 3 : 2),
-                          boxShadow: [
-                            BoxShadow(
-                                color: Colors.black,
-                                offset: Offset(selected ? 3 : 2, selected ? 3 : 2),
-                                blurRadius: 0)
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(kPresetSprites[i],
-                            style: TextStyle(fontSize: selected ? 28 : 24)),
-                      ),
-                    );
-                  }),
+                SpriteSelector(
+                  selectedId: _selectedSprite,
+                  onSelected: (id) => setState(() => _selectedSprite = id),
                 ),
                 const SizedBox(height: AppSpacing.xl),
 

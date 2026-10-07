@@ -8,7 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
-import '../../../core/widgets/pixel_padlock.dart';
+import '../../../core/widgets/sprite_avatar.dart';
 import '../controllers/vault_controller.dart';
 import 'chest_unlocked_modal.dart';
 
@@ -36,7 +36,8 @@ class _ChestLockedDateModalState extends State<ChestLockedDateModal> {
     final unlock = widget.capsule.unlockDate;
     if (unlock == null) return;
     final now = DateTime.now();
-    if (!unlock.isAfter(now)) context.read<VaultController>().refreshDueUnlocks();
+    if (!unlock.isAfter(now))
+      context.read<VaultController>().refreshDueUnlocks();
     final sealed = widget.capsule.createdAt;
     final total = unlock.difference(sealed).inSeconds;
     final remaining = unlock.difference(now);
@@ -44,8 +45,9 @@ class _ChestLockedDateModalState extends State<ChestLockedDateModal> {
     setState(() {
       _remaining = remaining.isNegative ? Duration.zero : remaining;
       final elapsed = total - remaining.inSeconds;
-      _progress =
-          (total > 0 ? elapsed / total : 0.0).clamp(0.0, 1.0).toDouble();
+      _progress = (total > 0 ? elapsed / total : 0.0)
+          .clamp(0.0, 1.0)
+          .toDouble();
     });
   }
 
@@ -154,19 +156,31 @@ class _ChestLockedDateModalState extends State<ChestLockedDateModal> {
               Text(
                 '"${widget.capsule.title}"',
                 textAlign: TextAlign.center,
-                style: AppTextStyles.body
-                    .copyWith(color: AppColors.cyan, fontSize: 10, height: 1.6),
+                style: AppTextStyles.body.copyWith(
+                  color: AppColors.cyan,
+                  fontSize: 10,
+                  height: 1.6,
+                ),
               ),
               const SizedBox(height: AppSpacing.xl),
 
-              const Center(child: PixelPadlock(size: 70)),
+              const Center(
+                child: SpriteAssetIcon(
+                  assetPath: 'assets/sprites/mystery_box.svg',
+                  fallbackPath: 'assets/sprites/mystery_box_96.png',
+                  size: 84,
+                  semanticsLabel: 'Mystery box chest',
+                ),
+              ),
               const SizedBox(height: AppSpacing.md),
 
               Text(
                 'LOCKED',
                 textAlign: TextAlign.center,
-                style: AppTextStyles.body
-                    .copyWith(color: AppColors.yellow, fontSize: 11),
+                style: AppTextStyles.body.copyWith(
+                  color: AppColors.yellow,
+                  fontSize: 11,
+                ),
               ),
               const SizedBox(height: AppSpacing.lg),
 
@@ -215,8 +229,10 @@ class _ChestLockedDateModalState extends State<ChestLockedDateModal> {
                 child: Text(
                   _targetText,
                   textAlign: TextAlign.center,
-                  style: AppTextStyles.body
-                      .copyWith(color: AppColors.cyan, fontSize: 7),
+                  style: AppTextStyles.body.copyWith(
+                    color: AppColors.cyan,
+                    fontSize: 7,
+                  ),
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -239,8 +255,10 @@ class _ChestLockedDateModalState extends State<ChestLockedDateModal> {
                   child: Center(
                     child: Text(
                       '[ CANCEL CHEST ]',
-                      style: AppTextStyles.caption
-                          .copyWith(color: AppColors.coral, fontSize: 6),
+                      style: AppTextStyles.caption.copyWith(
+                        color: AppColors.coral,
+                        fontSize: 6,
+                      ),
                     ),
                   ),
                 ),
@@ -292,8 +310,10 @@ class _CloseBtn extends StatelessWidget {
         ),
         child: Text(
           '[ X ]',
-          style: AppTextStyles.caption
-              .copyWith(color: AppColors.coral, fontSize: 8),
+          style: AppTextStyles.caption.copyWith(
+            color: AppColors.coral,
+            fontSize: 8,
+          ),
         ),
       ),
     );
