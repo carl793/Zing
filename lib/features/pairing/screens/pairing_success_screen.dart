@@ -125,7 +125,7 @@ class _PairingSuccessScreenState extends State<PairingSuccessScreen> {
                 label: '[ ENTER OVERWORLD ]',
                 style: PixelButtonStyle.coral,
                 onPressed: () => Navigator.of(context)
-                    .pushReplacementNamed(AppRoutes.dashboard),
+                    .pushReplacementNamed(AppRoutes.shell),
               ),
             ],
           ),

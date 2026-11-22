@@ -73,7 +73,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         ? AppRoutes.spriteSelect
         : (coupleId == null || coupleId.isEmpty
             ? AppRoutes.pairing
-            : AppRoutes.dashboard);
+            : AppRoutes.shell);
     Navigator.of(context).pushReplacementNamed(route);
   }
 

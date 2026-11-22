@@ -19,10 +19,6 @@ class AppRoutes {
   static const pairing       = '/pairing';
   static const pairingSuccess= '/pairing-success';
   static const shell         = '/shell';
-  static const dashboard     = '/shell';
-  static const calendar      = '/calendar';
-  static const vault         = '/vault';
-  static const settings      = '/settings';
 }
 
 class AppRouter {
@@ -59,13 +55,7 @@ class AppRouter {
       case AppRoutes.pairingSuccess:
         return _page(const PairingSuccessScreen());
       case AppRoutes.shell:
-        return _page(const ShellScreen(initialIndex: 0));
-      case AppRoutes.calendar:
-        return _page(const ShellScreen(initialIndex: 1));
-      case AppRoutes.vault:
-        return _page(const ShellScreen(initialIndex: 2));
-      case AppRoutes.settings:
-        return _page(const ShellScreen(initialIndex: 3));
+        return _page(const ShellScreen());
       default:
         return _page(SplashScreen(resolveRoute: resolveInitialRoute));
     }

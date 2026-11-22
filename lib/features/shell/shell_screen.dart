@@ -1,26 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../core/theme/app_colors.dart';
 import '../../core/widgets/pixel_nav_bar.dart';
 import '../calendar/screens/calendar_screen.dart';
 import '../dashboard/screens/dashboard_screen.dart';
 import '../settings/screens/settings_screen.dart';
 import '../vault/screens/vault_screen.dart';
+import 'shell_tabs.dart';
 
-class ShellScreen extends StatefulWidget {
-  final int initialIndex;
-  const ShellScreen({super.key, this.initialIndex = 0});
-
-  @override
-  State<ShellScreen> createState() => _ShellScreenState();
-}
-
-class _ShellScreenState extends State<ShellScreen> {
-  late int _currentIndex;
-
-  @override
-  void initState() {
-    super.initState();
-    _currentIndex = widget.initialIndex;
-  }
+class ShellScreen extends StatelessWidget {
+  const ShellScreen({super.key});
 
   static const List<Widget> _screens = [
     DashboardScreen(),
@@ -31,17 +21,19 @@ class _ShellScreenState extends State<ShellScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
-        backgroundColor: const Color(0xFF1B1B2F),
-        body: IndexedStack(
-          index: _currentIndex,
-          children: _screens,
-        ),
-        bottomNavigationBar: PixelNavBar(
-          currentIndex: _currentIndex,
-          onTap: (i) => setState(() => _currentIndex = i),
+    return ChangeNotifierProvider(
+      create: (_) => ShellTabs(),
+      child: Consumer<ShellTabs>(
+        builder: (context, tabs, _) => PopScope(
+          canPop: false,
+          child: Scaffold(
+            backgroundColor: AppColors.navy,
+            body: IndexedStack(index: tabs.value.index, children: _screens),
+            bottomNavigationBar: PixelNavBar(
+              currentIndex: tabs.value.index,
+              onTap: (i) => tabs.open(ShellTab.values[i]),
+            ),
+          ),
         ),
       ),
     );

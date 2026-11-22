@@ -9,7 +9,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
-import '../../../core/router/app_router.dart';
+import '../../shell/shell_tabs.dart';
 import '../controllers/dashboard_controller.dart';
 import '../modals/propose_quest_modal.dart';
 import '../modals/review_quest_modal.dart';
@@ -221,7 +221,7 @@ class _BottomCTAs extends StatelessWidget {
             child: PixelButton(
               label: '[LOG MEMORY]',
               onPressed: () =>
-                  Navigator.of(context).pushNamed(AppRoutes.calendar),
+                  context.read<ShellTabs>().open(ShellTab.calendar),
             ),
           ),
           const SizedBox(width: AppSpacing.md),
@@ -230,7 +230,7 @@ class _BottomCTAs extends StatelessWidget {
               label: '[LOCK CHEST]',
               style: PixelButtonStyle.outline,
               backgroundColor: AppColors.charcoal,
-              onPressed: () => Navigator.of(context).pushNamed(AppRoutes.vault),
+              onPressed: () => context.read<ShellTabs>().open(ShellTab.vault),
             ),
           ),
         ],
