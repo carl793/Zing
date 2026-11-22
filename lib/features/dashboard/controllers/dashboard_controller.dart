@@ -89,7 +89,7 @@ class DashboardController extends ChangeNotifier {
       _recalculateDistance();
       if (!oldEnabled && me!.locationEnabled) refreshMyLocation();
       notifyListeners();
-    });
+    }, onError: _logStreamError);
     if (me!.coupleId == null) return;
 
     _coupleSub = _fs.streamDoc('couples/${me!.coupleId}').listen((snap) {
@@ -97,22 +97,27 @@ class DashboardController extends ChangeNotifier {
       couple = CoupleModel.fromMap(snap.id, snap.data()!);
       _updateQuestCountdown();
       notifyListeners();
-    });
+    }, onError: _logStreamError);
 
     final coupleSnap = await _fs.doc('couples/${me!.coupleId}').get();
     couple = CoupleModel.fromMap(me!.coupleId!, coupleSnap.data()!);
     final partnerUid = couple!.partnerUid(myUid);
 
+    // After an unlink the partner's profile is no longer readable; the
+    // shell's link guard then leaves for pairing.
     _partnerSub = _fs.streamDoc('users/$partnerUid').listen((snap) {
       if (!snap.exists) return;
       partner = UserModel.fromMap(partnerUid, snap.data()!);
       _recalculateDistance();
       notifyListeners();
-    });
+    }, onError: _logStreamError);
 
     await refreshMyLocation();
     _loadDaysTogetherThisYear();
   }
+
+  void _logStreamError(Object error) =>
+      debugPrint('Dashboard stream error: $error');
 
   void _loadDaysTogetherThisYear() {
     if (me?.coupleId == null) return;

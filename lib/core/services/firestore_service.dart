@@ -26,6 +26,8 @@ class FirestoreService {
 
   Future<void> deleteDoc(String path) => _db.doc(path).delete();
 
+  WriteBatch batch() => _db.batch();
+
   Stream<QuerySnapshot<Map<String, dynamic>>> streamCollection(
     String path, {
     List<(String field, dynamic value)> whereEquals = const [],
@@ -238,22 +240,6 @@ class FirestoreService {
     } catch (_) {
       return null;
     }
-  }
-
-  // ---------- Couples: unlink ----------
-
-  Future<void> unlinkCouple(String coupleId) async {
-    final coupleRef = _db.collection('couples').doc(coupleId);
-    final snap = await coupleRef.get();
-    if (!snap.exists) return;
-    final couple = CoupleModel.fromMap(coupleId, snap.data()!);
-
-    final batch = _db.batch();
-    batch.update(coupleRef, {'status': CoupleStatus.unlinked.name});
-    for (final uid in couple.memberUids) {
-      batch.update(_db.collection('users').doc(uid), {'coupleId': null});
-    }
-    await batch.commit();
   }
 
   // ---------- Capsules: atomic dual-tap unlock ----------

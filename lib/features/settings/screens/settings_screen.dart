@@ -17,6 +17,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_snack_bar.dart';
 import '../../../core/widgets/sprite_selector.dart';
 import '../../../core/services/audio_service.dart';
 
@@ -191,12 +192,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       debugPrint('Saving reunion alerts failed: $e');
       if (!mounted) return;
       setState(() => _alertsOn = !val);
-      _showMessage('COULD NOT SAVE ALERTS. TRY AGAIN.');
+      showPixelSnackBar(context, 'COULD NOT SAVE ALERTS. TRY AGAIN.',
+          color: AppColors.coral);
     }
   }
 
   Future<void> _unlink() async {
-    if (_me?.coupleId == null || _couple == null) return;
+    final me = _me;
+    final coupleId = me?.coupleId;
+    if (me == null || coupleId == null) return;
+    final couples = context.read<CoupleService>();
     final confirmed = await showConfirmDialog(
       context: context,
       message:
@@ -206,13 +211,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       cancelLabel: '[ KEEP LINKED ]',
     );
     if (!confirmed || !mounted) return;
-    await context.read<CoupleService>().unlinkPartners(
-      coupleId: _me!.coupleId!,
-      memberUids: _couple!.memberUids,
-    );
-    if (!mounted) return;
-    Navigator.of(context)
-        .pushNamedAndRemoveUntil(AppRoutes.pairing, (_) => false);
+    try {
+      // CoupleLinkGuard moves both phones to pairing once this lands.
+      await couples.unlink(coupleId: coupleId, myUid: me.uid);
+    } catch (e) {
+      debugPrint('Unlink failed: $e');
+      if (mounted) {
+        showPixelSnackBar(context, 'COULD NOT UNLINK. CHECK YOUR CONNECTION.',
+            color: AppColors.coral);
+      }
+    }
   }
 
   Future<void> _logout() async {
@@ -444,21 +452,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       debugPrint('Saving unit preference failed: $e');
       if (!mounted) return;
       setState(() => _couple = previous);
-      _showMessage('COULD NOT SAVE THE UNIT. TRY AGAIN.');
+      showPixelSnackBar(context, 'COULD NOT SAVE THE UNIT. TRY AGAIN.',
+          color: AppColors.coral);
     }
-  }
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: AppColors.purple,
-        content: Text(
-          message,
-          style: AppTextStyles.caption.copyWith(color: AppColors.yellow),
-        ),
-        duration: const Duration(seconds: 2),
-      ),
-    );
   }
 }
 

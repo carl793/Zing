@@ -90,7 +90,7 @@ class CalendarController extends ChangeNotifier {
             partnerName = name.toUpperCase();
             notifyListeners();
           }
-        });
+        }, onError: (Object e) => debugPrint('Calendar partner stream error: $e'));
       }
 
       _coupleSub = _fs.streamDoc('couples/$coupleId').listen((snap) {
@@ -102,7 +102,7 @@ class CalendarController extends ChangeNotifier {
                 ? ZingDateUtils.fromLocal(quest.targetDate!)
                 : null;
         notifyListeners();
-      });
+      }, onError: (Object e) => debugPrint('Calendar couple stream error: $e'));
 
       _subscribeMonth();
       _subscribeRecent();
