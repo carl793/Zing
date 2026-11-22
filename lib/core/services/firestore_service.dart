@@ -31,6 +31,7 @@ class FirestoreService {
     List<(String field, dynamic value)> whereEquals = const [],
     (String field, DateTime start, DateTime end)? whereDateRange,
     String? orderBy,
+    bool includeMetadataChanges = false,
   }) {
     Query<Map<String, dynamic>> q = _db.collection(path);
     for (final (field, value) in whereEquals) {
@@ -44,7 +45,7 @@ class FirestoreService {
           .where(field, isLessThan: Timestamp.fromDate(end));
     }
     if (orderBy != null) q = q.orderBy(orderBy);
-    return q.snapshots();
+    return q.snapshots(includeMetadataChanges: includeMetadataChanges);
   }
 
   Future<DocumentReference<Map<String, dynamic>>> addToCollection(

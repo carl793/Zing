@@ -59,6 +59,8 @@ class VaultController extends ChangeNotifier {
   final Set<String> _resolvingCapsuleTransitions = {};
   bool _sealedSnapshotReceived = false;
   bool _unlockedSnapshotReceived = false;
+  bool _sealedServerSnapshotReceived = false;
+  bool _unlockedServerSnapshotReceived = false;
   bool _sealedStreamFailed = false;
   bool _unlockedStreamFailed = false;
   bool _initialLoadExpired = false;
@@ -68,6 +70,7 @@ class VaultController extends ChangeNotifier {
   final Set<String> _unlockingCapsuleIds = {};
   final AudioRecorder _recorder = AudioRecorder();
   bool _disposed = false;
+  int _capsuleSubscriptionGeneration = 0;
 
   static const _saveErr = "COULDN'T SAVE. CHECK YOUR CONNECTION.";
   static const _photoErr = 'PHOTO UPLOAD FAILED. CHECK YOUR CONNECTION.';
@@ -189,6 +192,7 @@ class VaultController extends ChangeNotifier {
 
   void _subscribeCapsules() {
     if (coupleId == null) return;
+    final generation = ++_capsuleSubscriptionGeneration;
     _sealedCapsuleSub?.cancel();
     _unlockedCapsuleSub?.cancel();
     _partnerProfileSub?.cancel();
@@ -198,6 +202,8 @@ class VaultController extends ChangeNotifier {
     _resolvingCapsuleTransitions.clear();
     _sealedSnapshotReceived = false;
     _unlockedSnapshotReceived = false;
+    _sealedServerSnapshotReceived = false;
+    _unlockedServerSnapshotReceived = false;
     _sealedStreamFailed = false;
     _unlockedStreamFailed = false;
     _initialLoadExpired = false;
@@ -207,9 +213,9 @@ class VaultController extends ChangeNotifier {
 
     _initialLoadTimeout = Timer(const Duration(seconds: 15), () {
       if (_disposed || !isLoading) return;
-      if (_sealedSnapshotReceived || _unlockedSnapshotReceived) {
-        if (!_sealedSnapshotReceived) _sealedStreamFailed = true;
-        if (!_unlockedSnapshotReceived) _unlockedStreamFailed = true;
+      if (_sealedServerSnapshotReceived || _unlockedServerSnapshotReceived) {
+        if (!_sealedServerSnapshotReceived) _sealedStreamFailed = true;
+        if (!_unlockedServerSnapshotReceived) _unlockedStreamFailed = true;
         _mergeCapsuleSnapshots();
         return;
       }
@@ -229,9 +235,14 @@ class VaultController extends ChangeNotifier {
         .streamCollection(
           'couples/$coupleId/capsules',
           whereEquals: [('status', CapsuleStatus.sealed.name)],
+          includeMetadataChanges: true,
         )
         .listen(
       (snap) {
+        if (_disposed || generation != _capsuleSubscriptionGeneration) return;
+        // Firestore may first emit a partial device cache (especially after
+        // switching accounts). Never replace the complete vault with it.
+        if (snap.metadata.isFromCache || snap.metadata.hasPendingWrites) return;
         final incoming = <String, CapsuleModel>{
           for (final d in snap.docs) d.id: CapsuleModel.fromMap(d.id, d.data()),
         };
@@ -248,18 +259,27 @@ class VaultController extends ChangeNotifier {
           }
         }
         _sealedSnapshotReceived = true;
+        _sealedServerSnapshotReceived = true;
+        _sealedStreamFailed = false;
         _mergeCapsuleSnapshots();
       },
-      onError: (Object e) => _handleCapsuleStreamError(e, sealed: true),
+      onError: (Object e) {
+        if (!_disposed && generation == _capsuleSubscriptionGeneration) {
+          _handleCapsuleStreamError(e, sealed: true);
+        }
+      },
     );
 
     _unlockedCapsuleSub = _fs
         .streamCollection(
           'couples/$coupleId/capsules',
           whereEquals: [('status', CapsuleStatus.unlocked.name)],
+          includeMetadataChanges: true,
         )
         .listen(
       (snap) {
+        if (_disposed || generation != _capsuleSubscriptionGeneration) return;
+        if (snap.metadata.isFromCache || snap.metadata.hasPendingWrites) return;
         _unlockedCapsules
           ..clear()
           ..addEntries(snap.docs.map((d) => MapEntry(
@@ -270,9 +290,15 @@ class VaultController extends ChangeNotifier {
           _pendingCapsuleTransitions.remove(id);
         }
         _unlockedSnapshotReceived = true;
+        _unlockedServerSnapshotReceived = true;
+        _unlockedStreamFailed = false;
         _mergeCapsuleSnapshots();
       },
-      onError: (Object e) => _handleCapsuleStreamError(e, sealed: false),
+      onError: (Object e) {
+        if (!_disposed && generation == _capsuleSubscriptionGeneration) {
+          _handleCapsuleStreamError(e, sealed: false);
+        }
+      },
     );
   }
 
@@ -286,14 +312,16 @@ class VaultController extends ChangeNotifier {
     final sealedSettled = _sealedSnapshotReceived || _sealedStreamFailed;
     final unlockedSettled = _unlockedSnapshotReceived || _unlockedStreamFailed;
     final allSettled = sealedSettled && unlockedSettled;
-    final hasAnySnapshot = _sealedSnapshotReceived || _unlockedSnapshotReceived;
+    final hasAnySnapshot = _sealedServerSnapshotReceived || _unlockedServerSnapshotReceived;
     isLoading = !allSettled && !_initialLoadExpired;
     if (allSettled) {
       _initialLoadTimeout?.cancel();
-      error = hasAnySnapshot
-          ? null
+      error = _sealedServerSnapshotReceived || _unlockedServerSnapshotReceived
+          ? ((_sealedStreamFailed || _unlockedStreamFailed)
+              ? 'SOME CHESTS COULD NOT BE REFRESHED. RETRY.'
+              : null)
           : 'COULD NOT LOAD THE VAULT. CHECK YOUR CONNECTION AND RETRY.';
-      if (!hasAnySnapshot && _streamErrors.isNotEmpty) {
+      if (error != null && _streamErrors.isNotEmpty) {
         error = '$error ${_streamErrors.join(' ')}';
       }
     } else if (hasAnySnapshot) {
@@ -366,7 +394,7 @@ class VaultController extends ChangeNotifier {
     try {
       final snapshot = await _fs
           .doc('couples/$path/capsules/$capsuleId')
-          .get()
+          .get(const GetOptions(source: Source.server))
           .timeout(const Duration(seconds: 8));
       // A listener may have delivered the new status during the read.
       if (_unlockedCapsules.containsKey(capsuleId)) {
@@ -407,6 +435,7 @@ class VaultController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _capsuleSubscriptionGeneration++;
     _sealedCapsuleSub?.cancel();
     _unlockedCapsuleSub?.cancel();
     _partnerProfileSub?.cancel();

@@ -87,7 +87,7 @@ class _VaultView extends StatelessWidget {
                     child: CircularProgressIndicator(color: AppColors.yellow),
                   ),
                 )
-              else if (ctrl.error != null)
+              else if (ctrl.error != null && capsules.isEmpty)
                 Expanded(
                   child: Center(
                     child: Column(
@@ -108,6 +108,17 @@ class _VaultView extends StatelessWidget {
                   ),
                 )
               else ...[
+                if (ctrl.error != null) ...[
+                  Text(
+                    ctrl.error!,
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.caption.copyWith(
+                      color: AppColors.coral,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                ],
                 VaultFilterBar(
                   current: ctrl.filter,
                   sender: ctrl.senderFilter,

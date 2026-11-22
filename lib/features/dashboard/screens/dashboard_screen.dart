@@ -115,13 +115,13 @@ class _HeaderBar extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.fromLTRB(
         AppSpacing.lg,
-        AppSpacing.xl,
+        AppSpacing.xxl,
         AppSpacing.lg,
         AppSpacing.md,
       ),
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
-        vertical: AppSpacing.sm,
+        vertical: AppSpacing.xxl,
       ),
       decoration: BoxDecoration(
         color: AppColors.purple,
@@ -145,7 +145,7 @@ class _HeaderBar extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.body.copyWith(
                       color: AppColors.coral,
-                      fontSize: 8,
+                      fontSize: 10,
                     ),
                   ),
                 ),
@@ -159,7 +159,7 @@ class _HeaderBar extends StatelessWidget {
               const Text('\u2764\ufe0f', style: TextStyle(fontSize: 12)),
               Text(
                 'LINKED',
-                style: AppTextStyles.caption.copyWith(fontSize: 7),
+                style: AppTextStyles.caption.copyWith(fontSize: 8),
               ),
             ],
           ),
@@ -177,7 +177,7 @@ class _HeaderBar extends StatelessWidget {
                     textAlign: TextAlign.right,
                     style: AppTextStyles.body.copyWith(
                       color: AppColors.cyan,
-                      fontSize: 8,
+                      fontSize: 10,
                     ),
                   ),
                 ),
@@ -192,8 +192,8 @@ class _HeaderBar extends StatelessWidget {
   }
 
   Widget _playerMarker(Color color) => Container(
-    width: 16,
-    height: 16,
+    width: 20,
+    height: 20,
     decoration: BoxDecoration(
       color: color,
       border: Border.all(color: Colors.black, width: 1),

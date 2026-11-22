@@ -8,6 +8,7 @@ import '../../../core/models/user_model.dart';
 import '../../../core/services/couple_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/location_service.dart';
+import '../../../core/utils/date_utils.dart';
 
 enum DistanceState { loading, bothLive, partial, bothOff, together, networkFail }
 enum QuestState { none, pending, accepted }
@@ -28,6 +29,7 @@ class DashboardController extends ChangeNotifier {
   StreamSubscription? _coupleSub;
   StreamSubscription? _meSub;
   StreamSubscription? _partnerSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _yearMemoriesSub;
 
   // ── Distance state ──
   DistanceState distanceState = DistanceState.loading;
@@ -112,27 +114,42 @@ class DashboardController extends ChangeNotifier {
     _loadDaysTogetherThisYear();
   }
 
-  Future<void> _loadDaysTogetherThisYear() async {
+  void _loadDaysTogetherThisYear() {
     if (me?.coupleId == null) return;
-    try {
-      final year = DateTime.now().year;
-      // Query by date range only (single-field index) and filter
-      // entryType client-side — a server-side entryType + date filter
-      // would need a composite index that is not deployed.
-      final snap = await FirebaseFirestore.instance
-          .collection('couples/${me!.coupleId}/memories')
-          .where('date', isGreaterThanOrEqualTo: DateTime(year, 1, 1))
-          .where('date', isLessThan: DateTime(year + 1, 1, 1))
-          .get();
-      // Count distinct days
-      final days = snap.docs
-          .where((d) => d.data()['entryType'] == 'memory')
-          .map((d) => (d.data()['date'] as dynamic)?.toString().substring(0, 10))
-          .toSet()
-          .length;
-      daysTogetherthisYear = days;
-      notifyListeners();
-    } catch (_) {}
+    final year = DateTime.now().year;
+    // Keep this aligned with the calendar's UTC-midnight date convention.
+    // Filter entryType client-side to avoid requiring a composite index.
+    _yearMemoriesSub?.cancel();
+    _yearMemoriesSub = _fs
+        .streamCollection(
+          'couples/${me!.coupleId}/memories',
+          whereDateRange: (
+            'date',
+            DateTime.utc(year, 1, 1),
+            DateTime.utc(year + 1, 1, 1),
+          ),
+        )
+        .listen(
+      (snap) {
+        final loggedDays = <String>{};
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          if ((data['entryType'] ?? 'memory') != 'memory') continue;
+          final rawDate = data['date'];
+          final date = rawDate is Timestamp
+              ? rawDate.toDate()
+              : rawDate is DateTime
+                  ? rawDate
+                  : null;
+          if (date == null) continue;
+          loggedDays.add(ZingDateUtils.isoDate(date));
+        }
+        daysTogetherthisYear = loggedDays.length;
+        notifyListeners();
+      },
+      onError: (Object error) =>
+          debugPrint('Dashboard yearly memory stream error: $error'),
+    );
   }
 
   Future<void> refreshMyLocation() async {
@@ -272,6 +289,7 @@ class DashboardController extends ChangeNotifier {
     _coupleSub?.cancel();
     _meSub?.cancel();
     _partnerSub?.cancel();
+    _yearMemoriesSub?.cancel();
     _questTimer?.cancel();
     super.dispose();
   }
