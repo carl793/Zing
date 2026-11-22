@@ -54,16 +54,18 @@ class FirestoreService {
 
   // ---------- Pairing: room creation + atomic join ----------
 
+  static final Random _codeRandom = Random.secure();
+
   String _generateCode() =>
-      (Random().nextInt(900000) + 100000).toString();
+      (_codeRandom.nextInt(900000) + 100000).toString();
 
   Future<String> createRoom(String creatorUid) async {
     for (int attempt = 0; attempt < 5; attempt++) {
       final code = _generateCode();
       final ref = _db.collection('rooms').doc(code);
-      final existing = await ref.get();
-      if (existing.exists &&
-          !RoomModel.fromMap(code, existing.data()!).isExpired) continue;
+      // Any existing room keeps its code, even an expired one: the rules
+      // only let a room be created, never overwritten by another account.
+      if ((await ref.get()).exists) continue;
 
       await ref.set({
         'createdByUid': creatorUid,

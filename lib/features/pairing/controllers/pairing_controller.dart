@@ -71,15 +71,21 @@ class PairingController extends ChangeNotifier {
 
   void _listenForPartner() {
     _roomSub?.cancel();
-    _roomSub = _fs.streamRoom(generatedCode!).listen((room) {
-      if (room?.status == RoomStatus.linked) {
-        _claimCouple(room!.coupleId);
-        linked = true;
-        _countdownTimer?.cancel();
-        notifyListeners();
-      }
+    _roomSub = _fs.streamRoom(generatedCode!).listen((room) async {
+      if (room?.status != RoomStatus.linked || linked || _claiming) return;
+      _claiming = true;
+      _countdownTimer?.cancel();
+      // Finish claiming before moving on: the next screens read the
+      // partner's profile, which the rules only allow once this account's
+      // own profile points at the couple.
+      await _claimCouple(room!.coupleId);
+      _claiming = false;
+      linked = true;
+      notifyListeners();
     });
   }
+
+  bool _claiming = false;
 
   /// Writes the room's couple id to this account's own document. Joining never
   /// touches the creator's document, so the creator claims it here instead.

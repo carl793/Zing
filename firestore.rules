@@ -2,50 +2,152 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ── helpers ─────────────────────────────────────────────────────────
+
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isCoupleMember(coupleId) {
-      return isSignedIn() &&
-        request.auth.uid in get(/databases/$(database)/documents/couples/$(coupleId)).data.memberUids;
+    function coupleData(coupleId) {
+      return get(/databases/$(database)/documents/couples/$(coupleId)).data;
     }
 
-    // ── users ──
+    function coupleDataAfter(coupleId) {
+      return getAfter(/databases/$(database)/documents/couples/$(coupleId)).data;
+    }
+
+    function roomData(code) {
+      return get(/databases/$(database)/documents/rooms/$(code)).data;
+    }
+
+    function roomDataAfter(code) {
+      return getAfter(/databases/$(database)/documents/rooms/$(code)).data;
+    }
+
+    function isCoupleMember(coupleId) {
+      return isSignedIn() && request.auth.uid in coupleData(coupleId).memberUids;
+    }
+
+    // True when [uid] shares an active couple with the caller. Only the
+    // caller's own profile is consulted, so a partner who has not claimed
+    // the link on their own profile yet is still readable.
+    function isMyPartner(uid) {
+      let myCoupleId = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('coupleId', null);
+      return myCoupleId is string
+        && myCoupleId != ''
+        && coupleData(myCoupleId).get('status', 'active') == 'active'
+        && request.auth.uid in coupleData(myCoupleId).memberUids
+        && uid in coupleData(myCoupleId).memberUids;
+    }
+
+    // True when an update leaves every one of [keys] untouched.
+    function unchanged(keys) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(keys);
+    }
+
+    // True when an update touches nothing outside [keys].
+    function changesOnly(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // A room's creator withdraws a code nobody has used yet.
+    function creatorCancelsRoom() {
+      return resource.data.createdByUid == request.auth.uid
+        && resource.data.status == 'pending'
+        && request.resource.data.status == 'cancelled'
+        && changesOnly(['status']);
+    }
+
+    // Another account joins a live code. The couple it links to must be
+    // created in the same transaction, for exactly these two accounts.
+    function partnerJoinsRoom() {
+      return resource.data.status == 'pending'
+        && request.time < resource.data.expiresAt
+        && resource.data.createdByUid != request.auth.uid
+        && request.resource.data.status == 'linked'
+        && changesOnly(['status', 'coupleId'])
+        && coupleDataAfter(request.resource.data.coupleId).memberUids
+             == [resource.data.createdByUid, request.auth.uid];
+    }
+
+    // A couple may only be created by the join transaction: the joining
+    // account plus the creator of the pending room being linked.
+    function coupleCreatedByJoin(coupleId) {
+      let members = request.resource.data.memberUids;
+      let code = request.resource.data.pairingCode;
+      return members is list
+        && members.size() == 2
+        && members[1] == request.auth.uid
+        && roomData(code).status == 'pending'
+        && roomData(code).createdByUid == members[0]
+        && roomDataAfter(code).coupleId == coupleId;
+    }
+
+    // ── users ───────────────────────────────────────────────────────────
+    // Your own profile and your partner's. Profiles are only ever read by
+    // id; listing them would expose every account's email and location.
     match /users/{uid} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn() && (request.auth.uid == uid || isMyPartner(uid));
+      allow list: if false;
       allow write: if isSignedIn() && request.auth.uid == uid;
     }
 
-    // ── rooms ──
+    // ── rooms (pairing codes) ───────────────────────────────────────────
+    // Fetching a room by its code is how a partner joins, so any account
+    // may read one by id. Listing is limited to rooms you created (used to
+    // recover a link made while you were signed out), so live codes can't
+    // be harvested.
     match /rooms/{code} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.createdByUid == request.auth.uid;
-      allow update: if isSignedIn();
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && resource.data.createdByUid == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update: if isSignedIn() && (creatorCancelsRoom() || partnerJoinsRoom());
     }
 
-    // ── couples ──
+    // ── couples ─────────────────────────────────────────────────────────
     match /couples/{coupleId} {
-      allow create: if isSignedIn();
-      allow read, update: if isCoupleMember(coupleId);
+      allow create: if isSignedIn() && coupleCreatedByJoin(coupleId);
+      allow read: if isCoupleMember(coupleId);
+      // Members change the quest, settings and link status, never who the
+      // members are.
+      allow update: if isCoupleMember(coupleId)
+        && unchanged(['memberUids', 'pairingCode', 'linkedAt']);
 
       match /memories/{memoryId} {
         allow read: if isCoupleMember(coupleId);
-        allow create: if isCoupleMember(coupleId) && request.resource.data.authorUid == request.auth.uid;
-        allow update, delete: if isCoupleMember(coupleId) && resource.data.authorUid == request.auth.uid;
+        allow create: if isCoupleMember(coupleId)
+          && request.resource.data.authorUid == request.auth.uid;
+        allow update: if isCoupleMember(coupleId)
+          && resource.data.authorUid == request.auth.uid
+          && unchanged(['authorUid', 'createdAt']);
+        allow delete: if isCoupleMember(coupleId)
+          && resource.data.authorUid == request.auth.uid;
 
         match /comments/{commentId} {
           allow read: if isCoupleMember(coupleId);
-          allow create: if isCoupleMember(coupleId) && request.resource.data.authorUid == request.auth.uid;
-          allow update, delete: if isCoupleMember(coupleId) && resource.data.authorUid == request.auth.uid;
+          allow create: if isCoupleMember(coupleId)
+            && request.resource.data.authorUid == request.auth.uid;
+          allow update: if isCoupleMember(coupleId)
+            && resource.data.authorUid == request.auth.uid
+            && unchanged(['authorUid', 'createdAt']);
+          allow delete: if isCoupleMember(coupleId)
+            && resource.data.authorUid == request.auth.uid;
         }
       }
 
+      // Still permissive about status changes: these are tightened together
+      // with the vault rewrite, which moves sealed content out of the chest
+      // document and checks unlock transitions here.
       match /capsules/{capsuleId} {
         allow read: if isCoupleMember(coupleId);
-        allow create: if isCoupleMember(coupleId) && request.resource.data.creatorUid == request.auth.uid;
-        allow update: if isCoupleMember(coupleId);
-        allow delete: if isCoupleMember(coupleId) && resource.data.creatorUid == request.auth.uid;
+        allow create: if isCoupleMember(coupleId)
+          && request.resource.data.creatorUid == request.auth.uid;
+        allow update: if isCoupleMember(coupleId)
+          && unchanged(['creatorUid', 'createdAt']);
+        allow delete: if isCoupleMember(coupleId)
+          && resource.data.creatorUid == request.auth.uid;
       }
 
       match /monthlyRecaps/{recapId} {
