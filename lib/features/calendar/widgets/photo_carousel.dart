@@ -78,7 +78,7 @@ class _PhotoCarouselState extends State<PhotoCarousel> {
                               ),
                             ),
                           ),
-                    errorBuilder: (_, __, ___) => const Center(
+                    errorBuilder: (_, _, _) => const Center(
                       child: Icon(Icons.broken_image, color: AppColors.gray),
                     ),
                   ),
@@ -88,7 +88,7 @@ class _PhotoCarouselState extends State<PhotoCarousel> {
                   right: 0,
                   bottom: 0,
                   child: Container(
-                    color: Colors.black.withOpacity(0.6),
+                    color: Colors.black.withValues(alpha: 0.6),
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppSpacing.sm,
                       vertical: 4,

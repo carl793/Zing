@@ -24,11 +24,11 @@ class OnboardingProgressBar extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: done || active
                             ? AppColors.yellow
-                            : AppColors.gray.withOpacity(0.3),
+                            : AppColors.gray.withValues(alpha: 0.3),
                         boxShadow: done || active
                             ? [
                                 BoxShadow(
-                                    color: AppColors.yellow.withOpacity(0.4),
+                                    color: AppColors.yellow.withValues(alpha: 0.4),
                                     offset: const Offset(0, 2),
                                     blurRadius: 0)
                               ]

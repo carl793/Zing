@@ -66,7 +66,7 @@ class PixelButton extends StatelessWidget {
               ? []
               : [
                   BoxShadow(
-                    color: _isOutline ? accent.withOpacity(0.4) : Colors.black,
+                    color: _isOutline ? accent.withValues(alpha: 0.4) : Colors.black,
                     offset: const Offset(4, 4),
                     blurRadius: 0,
                   ),

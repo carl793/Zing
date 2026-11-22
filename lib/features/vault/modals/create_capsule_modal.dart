@@ -81,7 +81,6 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
   String get _unlockDateDisplay {
     if (_unlockDate == null) return 'TAP TO SET DATE & TIME..';
     final d = _unlockDate!;
-    final h = d.hour.toString().padLeft(2, '0');
     final m = d.minute.toString().padLeft(2, '0');
     final ampm = d.hour < 12 ? 'AM' : 'PM';
     final h12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
@@ -353,7 +352,7 @@ class _MediaButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active
-              ? AppColors.cyan.withOpacity(0.1)
+              ? AppColors.cyan.withValues(alpha: 0.1)
               : AppColors.charcoal,
           border: Border.all(
             color: active ? AppColors.cyan : AppColors.cyan,

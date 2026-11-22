@@ -64,7 +64,7 @@ class PhotoLightboxScreen extends StatelessWidget {
                             color: AppColors.yellow,
                           ),
                         ),
-                  errorBuilder: (_, __, ___) => const Center(
+                  errorBuilder: (_, _, _) => const Center(
                     child: Icon(
                       Icons.broken_image,
                       color: AppColors.gray,

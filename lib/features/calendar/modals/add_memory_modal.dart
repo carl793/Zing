@@ -170,7 +170,7 @@ class _AddMemoryModalState extends State<AddMemoryModal> {
                   : Image.network(
                       slot.url!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Center(
+                      errorBuilder: (_, _, _) => const Center(
                         child: Icon(Icons.broken_image, color: AppColors.gray),
                       ),
                     ),

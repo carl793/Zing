@@ -159,7 +159,7 @@ class _LiveDistanceState extends StatelessWidget {
               border: Border.all(color: AppColors.amber, width: 1),
             ),
             child: Text(
-              'APPROX — ${controller.partner?.displayName?.toUpperCase() ?? 'PARTNER'}\'S GPS OFF',
+              'APPROX — ${controller.partner?.displayName.toUpperCase() ?? 'PARTNER'}\'S GPS OFF',
               style: AppTextStyles.caption.copyWith(
                 color: AppColors.amber,
                 fontSize: 8,

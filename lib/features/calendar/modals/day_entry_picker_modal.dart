@@ -107,7 +107,7 @@ class _EntryCard extends StatelessWidget {
                   ? Image.network(
                       entry.photoUrls.first,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(
+                      errorBuilder: (_, _, _) => const Icon(
                         Icons.broken_image,
                         size: 16,
                         color: AppColors.gray,
