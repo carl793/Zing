@@ -7,8 +7,11 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
 import '../../../core/widgets/pixel_error_box.dart';
+import '../../../core/widgets/pixel_snack_bar.dart';
 import '../../../core/widgets/sprite_avatar.dart';
 import '../controllers/vault_controller.dart';
+import '../widgets/cancel_chest_dialog.dart';
+import '../widgets/chest_unlocked_notice.dart';
 
 class ChestLockedDualTapModal extends StatefulWidget {
   final CapsuleModel capsule;
@@ -26,9 +29,16 @@ class _ChestLockedDualTapModalState extends State<ChestLockedDualTapModal> {
   @override
   Widget build(BuildContext context) {
     final ctrl = context.watch<VaultController>();
-    final myDone = ctrl.myTapDone(widget.capsule);
-    final partnerDone = ctrl.partnerTapDone(widget.capsule);
-    final isMine = ctrl.isMyChest(widget.capsule);
+    // Read the live chest, not the copy this screen was opened with, so
+    // both partners' taps (and the unlock) appear while it's open.
+    final capsule =
+        ctrl.capsuleById(widget.capsule.capsuleId) ?? widget.capsule;
+    if (capsule.status == CapsuleStatus.unlocked) {
+      return ChestUnlockedNotice(capsule: capsule);
+    }
+    final myDone = ctrl.myTapDone(capsule);
+    final partnerDone = ctrl.partnerTapDone(capsule);
+    final isMine = ctrl.isMyChest(capsule);
 
     return Scaffold(
       backgroundColor: AppColors.navy,
@@ -62,7 +72,7 @@ class _ChestLockedDualTapModalState extends State<ChestLockedDualTapModal> {
               const SizedBox(height: AppSpacing.lg),
 
               Text(
-                '"${widget.capsule.title}"',
+                '"${capsule.title}"',
                 textAlign: TextAlign.center,
                 style: AppTextStyles.body.copyWith(
                   color: AppColors.cyan,
@@ -134,12 +144,13 @@ class _ChestLockedDualTapModalState extends State<ChestLockedDualTapModal> {
                 style: PixelButtonStyle.yellow,
                 onPressed: (myDone || _tapping)
                     ? null
-                    : () => _tap(context, ctrl),
+                    : () => _tap(ctrl, capsule),
               ),
               const SizedBox(height: AppSpacing.md),
 
               Text(
-                'Both partners must tap within the same session to unlock this chest.',
+                'Both partners must tap to unlock this chest. Your tap is '
+                'saved until your partner taps too.',
                 textAlign: TextAlign.center,
                 style: AppTextStyles.caption.copyWith(
                   color: AppColors.gray,
@@ -152,7 +163,7 @@ class _ChestLockedDualTapModalState extends State<ChestLockedDualTapModal> {
               // Cancel only for creator
               if (isMine) ...[
                 GestureDetector(
-                  onTap: () => _cancel(context, ctrl),
+                  onTap: () => _cancel(ctrl, capsule),
                   child: Center(
                     child: Text(
                       '[ CANCEL CHEST ]',
@@ -179,29 +190,28 @@ class _ChestLockedDualTapModalState extends State<ChestLockedDualTapModal> {
     );
   }
 
-  Future<void> _tap(BuildContext context, VaultController ctrl) async {
+  Future<void> _tap(VaultController ctrl, CapsuleModel capsule) async {
     setState(() {
       _tapping = true;
       _error = null;
     });
-    final error = await ctrl.tapUnlock(widget.capsule);
+    final error = await ctrl.tapUnlock(capsule);
     if (!mounted) return;
-    setState(() => _tapping = false);
-    if (error != null) setState(() => _error = error);
-    // If both tapped, capsule stream will flip to unlocked and screen will
-    // be popped by the vault_screen logic.
+    setState(() {
+      _tapping = false;
+      _error = error;
+    });
   }
 
-  Future<void> _cancel(BuildContext context, VaultController ctrl) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierColor: Colors.black87,
-      builder: (_) => _CancelDialog(chestName: widget.capsule.title),
-    );
-    if (confirmed != true || !mounted) return;
-    final error = await ctrl.cancelCapsule(widget.capsule);
+  Future<void> _cancel(VaultController ctrl, CapsuleModel capsule) async {
+    if (!await showCancelChestDialog(context, capsule.title)) return;
+    final error = await ctrl.cancelCapsule(capsule);
     if (!mounted) return;
-    if (error == null) Navigator.of(context).pop();
+    if (error == null) {
+      Navigator.of(context).pop();
+    } else {
+      showPixelSnackBar(context, error, color: AppColors.coral);
+    }
   }
 }
 
@@ -283,72 +293,6 @@ class _CloseBtn extends StatelessWidget {
             color: AppColors.coral,
             fontSize: 8,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CancelDialog extends StatelessWidget {
-  final String chestName;
-  const _CancelDialog({required this.chestName});
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(AppSpacing.xl),
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: AppColors.purple,
-          border: Border.all(color: AppColors.coral, width: 2),
-          boxShadow: const [
-            BoxShadow(color: Colors.black, offset: Offset(5, 5), blurRadius: 0),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Icon(
-              Icons.warning_amber_rounded,
-              color: AppColors.amber,
-              size: 34,
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'CANCEL THIS\nCHEST?',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.subHeader.copyWith(
-                color: AppColors.coral,
-                fontSize: 14,
-                height: 1.6,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'This will permanently delete\n"$chestName" and everything sealed inside it.\nThis cannot be undone.',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.body.copyWith(
-                color: AppColors.gray,
-                fontSize: 6,
-                height: 1.8,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            PixelButton(
-              label: '[ KEEP SEALED ]',
-              style: PixelButtonStyle.outline,
-              backgroundColor: AppColors.charcoal,
-              onPressed: () => Navigator.of(context).pop(false),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            PixelButton(
-              label: '[ YES, CANCEL CHEST ]',
-              onPressed: () => Navigator.of(context).pop(true),
-            ),
-          ],
         ),
       ),
     );

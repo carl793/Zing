@@ -9,6 +9,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_snack_bar.dart';
 import '../../../core/widgets/sprite_avatar.dart';
 import '../../../core/widgets/pixel_modal_shell.dart';
 import '../controllers/vault_controller.dart';
@@ -16,6 +17,7 @@ import '../modals/chest_locked_date_modal.dart';
 import '../modals/chest_locked_dualtap_modal.dart';
 import '../modals/chest_unlocked_modal.dart';
 import '../modals/create_capsule_modal.dart';
+import '../widgets/cancel_chest_dialog.dart';
 import '../widgets/chest_card.dart';
 import '../widgets/vault_filter_bar.dart';
 
@@ -222,21 +224,38 @@ class _VaultView extends StatelessWidget {
     );
   }
 
-  /// Long-press on own sealed chest — shows a context sheet with cancel option.
-  void _longPress(
+  /// Long-press: archive/restore, or cancel your own sealed chest. The sheet
+  /// only picks the action; it runs here, on the vault's context, once the
+  /// sheet has closed (the sheet's own context is gone by then).
+  Future<void> _longPress(
     BuildContext context,
     VaultController ctrl,
     CapsuleModel capsule,
-  ) {
-    showPixelSheet(
+  ) async {
+    final action = await showPixelSheet<_ChestAction>(
       context: context,
       builder: (_) => ChangeNotifierProvider.value(
         value: ctrl,
         child: _ChestContextSheet(capsule: capsule),
       ),
     );
+    if (action == null || !context.mounted) return;
+
+    final String? error;
+    switch (action) {
+      case _ChestAction.toggleArchive:
+        error = await ctrl.setArchived(capsule, !capsule.isArchived);
+      case _ChestAction.cancel:
+        if (!await showCancelChestDialog(context, capsule.title)) return;
+        error = await ctrl.cancelCapsule(capsule);
+    }
+    if (error != null && context.mounted) {
+      showPixelSnackBar(context, error, color: AppColors.coral);
+    }
   }
 }
+
+enum _ChestAction { toggleArchive, cancel }
 
 class _NewChestButton extends StatelessWidget {
   final VaultController ctrl;
@@ -349,6 +368,8 @@ class _ChestContextSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ctrl = context.read<VaultController>();
+    final canCancel =
+        ctrl.isMyChest(capsule) && capsule.status == CapsuleStatus.sealed;
 
     return PixelModalShell(
       title: '"${capsule.title}"',
@@ -358,10 +379,7 @@ class _ChestContextSheet extends StatelessWidget {
           Text(
             capsule.isArchived
                 ? 'ARCHIVED CHEST.'
-                : (ctrl.isMyChest(capsule) &&
-                          capsule.status == CapsuleStatus.sealed
-                      ? 'YOUR OWN SEALED CHEST.'
-                      : 'CHEST OPTIONS.'),
+                : (canCancel ? 'YOUR OWN SEALED CHEST.' : 'CHEST OPTIONS.'),
             style: AppTextStyles.caption.copyWith(
               color: AppColors.gray,
               fontSize: 8,
@@ -374,96 +392,19 @@ class _ChestContextSheet extends StatelessWidget {
                 : '[ ARCHIVE CHEST ]',
             style: PixelButtonStyle.outline,
             backgroundColor: AppColors.charcoal,
-            onPressed: () async {
-              await ctrl.setArchived(capsule, !capsule.isArchived);
-              if (context.mounted) Navigator.of(context).pop();
-            },
+            onPressed: () =>
+                Navigator.of(context).pop(_ChestAction.toggleArchive),
           ),
-          if (ctrl.isMyChest(capsule) && capsule.status == CapsuleStatus.sealed)
+          if (canCancel) ...[
             const SizedBox(height: AppSpacing.md),
-          if (ctrl.isMyChest(capsule) && capsule.status == CapsuleStatus.sealed)
             PixelButton(
               label: '[ CANCEL CHEST ]',
               style: PixelButtonStyle.outlineDanger,
               backgroundColor: AppColors.charcoal,
-              onPressed: () async {
-                Navigator.of(context).pop();
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  barrierColor: Colors.black87,
-                  builder: (_) => _CancelDialog(chestName: capsule.title),
-                );
-                if (confirmed != true || !context.mounted) return;
-                await ctrl.cancelCapsule(capsule);
-              },
+              onPressed: () => Navigator.of(context).pop(_ChestAction.cancel),
             ),
+          ],
         ],
-      ),
-    );
-  }
-}
-
-class _CancelDialog extends StatelessWidget {
-  final String chestName;
-  const _CancelDialog({required this.chestName});
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(AppSpacing.xl),
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: AppColors.purple,
-          border: Border.all(color: AppColors.coral, width: 2),
-          boxShadow: const [
-            BoxShadow(color: Colors.black, offset: Offset(5, 5), blurRadius: 0),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Icon(
-              Icons.warning_amber_rounded,
-              color: AppColors.amber,
-              size: 34,
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'CANCEL THIS\nCHEST?',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.subHeader.copyWith(
-                color: AppColors.coral,
-                fontSize: 14,
-                height: 1.6,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'This will permanently delete\n"$chestName" and everything sealed inside it.\nThis cannot be undone.',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.body.copyWith(
-                color: AppColors.gray,
-                fontSize: 6,
-                height: 1.8,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            PixelButton(
-              label: '[ KEEP SEALED ]',
-              style: PixelButtonStyle.outline,
-              backgroundColor: AppColors.charcoal,
-              onPressed: () => Navigator.of(context).pop(false),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            PixelButton(
-              label: '[ YES, CANCEL CHEST ]',
-              onPressed: () => Navigator.of(context).pop(true),
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -8,9 +8,11 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_snack_bar.dart';
 import '../../../core/widgets/sprite_avatar.dart';
 import '../controllers/vault_controller.dart';
-import 'chest_unlocked_modal.dart';
+import '../widgets/cancel_chest_dialog.dart';
+import '../widgets/chest_unlocked_notice.dart';
 
 class ChestLockedDateModal extends StatefulWidget {
   final CapsuleModel capsule;
@@ -36,8 +38,9 @@ class _ChestLockedDateModalState extends State<ChestLockedDateModal> {
     final unlock = widget.capsule.unlockDate;
     if (unlock == null) return;
     final now = DateTime.now();
-    if (!unlock.isAfter(now))
+    if (!unlock.isAfter(now)) {
       context.read<VaultController>().refreshDueUnlocks();
+    }
     final sealed = widget.capsule.createdAt;
     final total = unlock.difference(sealed).inSeconds;
     final remaining = unlock.difference(now);
@@ -81,46 +84,7 @@ class _ChestLockedDateModalState extends State<ChestLockedDateModal> {
     final capsule =
         ctrl.capsuleById(widget.capsule.capsuleId) ?? widget.capsule;
     if (capsule.status == CapsuleStatus.unlocked) {
-      return Scaffold(
-        backgroundColor: AppColors.navy,
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'CHEST UNLOCKED',
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.header.copyWith(color: AppColors.yellow),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                PixelButton(
-                  label: '[ OPEN CHEST ]',
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ChangeNotifierProvider.value(
-                          value: ctrl,
-                          child: ChestUnlockedModal(capsule: capsule),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: AppSpacing.md),
-                PixelButton(
-                  label: '[ CLOSE ]',
-                  style: PixelButtonStyle.outline,
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      return ChestUnlockedNotice(capsule: capsule);
     }
     return Scaffold(
       backgroundColor: AppColors.navy,
@@ -251,7 +215,7 @@ class _ChestLockedDateModalState extends State<ChestLockedDateModal> {
               // Cancel option only for creator
               if (_isMyChest) ...[
                 GestureDetector(
-                  onTap: () => _cancel(context),
+                  onTap: _cancel,
                   child: Center(
                     child: Text(
                       '[ CANCEL CHEST ]',
@@ -278,18 +242,15 @@ class _ChestLockedDateModalState extends State<ChestLockedDateModal> {
     );
   }
 
-  Future<void> _cancel(BuildContext context) async {
+  Future<void> _cancel() async {
     final ctrl = context.read<VaultController>();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierColor: Colors.black87,
-      builder: (_) => _CancelDialog(chestName: widget.capsule.title),
-    );
-    if (confirmed != true || !mounted) return;
+    if (!await showCancelChestDialog(context, widget.capsule.title)) return;
     final error = await ctrl.cancelCapsule(widget.capsule);
     if (!mounted) return;
     if (error == null) {
       Navigator.of(context).pop();
+    } else {
+      showPixelSnackBar(context, error, color: AppColors.coral);
     }
   }
 }
@@ -314,72 +275,6 @@ class _CloseBtn extends StatelessWidget {
             color: AppColors.coral,
             fontSize: 8,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CancelDialog extends StatelessWidget {
-  final String chestName;
-  const _CancelDialog({required this.chestName});
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(AppSpacing.xl),
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: AppColors.purple,
-          border: Border.all(color: AppColors.coral, width: 2),
-          boxShadow: const [
-            BoxShadow(color: Colors.black, offset: Offset(5, 5), blurRadius: 0),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Icon(
-              Icons.warning_amber_rounded,
-              color: AppColors.amber,
-              size: 34,
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'CANCEL THIS\nCHEST?',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.subHeader.copyWith(
-                color: AppColors.coral,
-                fontSize: 14,
-                height: 1.6,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'This will permanently delete\n"$chestName" and everything sealed inside it.\nThis cannot be undone.',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.body.copyWith(
-                color: AppColors.gray,
-                fontSize: 6,
-                height: 1.8,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            PixelButton(
-              label: '[ KEEP SEALED ]',
-              style: PixelButtonStyle.outline,
-              backgroundColor: AppColors.charcoal,
-              onPressed: () => Navigator.of(context).pop(false),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            PixelButton(
-              label: '[ YES, CANCEL CHEST ]',
-              onPressed: () => Navigator.of(context).pop(true),
-            ),
-          ],
         ),
       ),
     );
