@@ -4,6 +4,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_snack_bar.dart';
 import '../controllers/dashboard_controller.dart';
 
 class ReunionQuestCard extends StatelessWidget {
@@ -108,7 +109,7 @@ class _QuestPending extends StatelessWidget {
         Text(
           isProposer
               ? 'QUEST PROPOSED — AWAITING\n${partnerName.toUpperCase()}\'S RESPONSE'
-              : '${(controller.me?.displayName ?? 'PARTNER').toUpperCase()} PROPOSED\nA QUEST!',
+              : '${partnerName.toUpperCase()} PROPOSED\nA QUEST!',
           textAlign: TextAlign.center,
           style: AppTextStyles.body.copyWith(
             color: AppColors.yellow,
@@ -136,7 +137,12 @@ class _QuestPending extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         if (isProposer)
           GestureDetector(
-            onTap: controller.cancelQuest,
+            onTap: () async {
+              final error = await controller.cancelQuest();
+              if (error != null && context.mounted) {
+                showPixelSnackBar(context, error, color: AppColors.coral);
+              }
+            },
             child: Text(
               '[ CANCEL PROPOSAL ]',
               textAlign: TextAlign.center,

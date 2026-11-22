@@ -10,12 +10,16 @@ class ReunionQuest {
   final String? proposedByUid;
   final String? notes;
 
+  /// When the partner accepted; the countdown's progress starts here.
+  final DateTime? acceptedAt;
+
   ReunionQuest({
     this.status = ReunionQuestStatus.none,
     this.destination,
     this.targetDate,
     this.proposedByUid,
     this.notes,
+    this.acceptedAt,
   });
 
   factory ReunionQuest.fromMap(Map<String, dynamic>? data) {
@@ -29,6 +33,7 @@ class ReunionQuest {
       targetDate: (data['targetDate'] as Timestamp?)?.toDate(),
       proposedByUid: data['proposedByUid'],
       notes: data['notes'],
+      acceptedAt: (data['acceptedAt'] as Timestamp?)?.toDate(),
     );
   }
 
@@ -38,6 +43,7 @@ class ReunionQuest {
         if (targetDate != null) 'targetDate': Timestamp.fromDate(targetDate!),
         'proposedByUid': proposedByUid,
         'notes': notes,
+        if (acceptedAt != null) 'acceptedAt': Timestamp.fromDate(acceptedAt!),
       };
 }
 

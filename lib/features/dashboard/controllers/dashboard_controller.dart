@@ -230,13 +230,18 @@ class DashboardController extends ChangeNotifier {
 
   void _updateQuestCountdown() {
     _questTimer?.cancel();
-    final target = couple?.reunionQuest.targetDate;
-    if (target == null || questState != QuestState.accepted) return;
+    final quest = couple?.reunionQuest;
+    final target = quest?.targetDate;
+    if (quest == null || target == null || questState != QuestState.accepted) {
+      return;
+    }
 
-    final linked = couple!.linkedAt;
-    final total = target.difference(linked).inSeconds;
+    // Progress runs from when the quest was accepted. Quests accepted before
+    // that was recorded fall back to the day the couple linked.
+    final start = quest.acceptedAt ?? couple!.linkedAt;
+    final total = target.difference(start).inSeconds;
 
-    _questTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    void tick() {
       final remaining = target.difference(DateTime.now());
       if (remaining.isNegative) {
         _questRemaining = Duration.zero;
@@ -249,17 +254,27 @@ class DashboardController extends ChangeNotifier {
             (total > 0 ? elapsed / total : 0.0).clamp(0.0, 1.0).toDouble();
       }
       notifyListeners();
-    });
+    }
+
+    // Show the real countdown immediately, not 0D:00H:00M for a second.
+    tick();
+    if (_questRemaining == Duration.zero) return;
+    _questTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
   }
 
-  // ── Quest actions ──
+  // ── Quest actions ── each returns null on success, or a message to show.
 
-  Future<void> proposeQuest({
+  static const _questSaveError =
+      "COULDN'T SAVE THE QUEST. CHECK YOUR CONNECTION.";
+  static const _notLinkedError = 'NO PARTNER LINKED YET.';
+
+  Future<String?> proposeQuest({
     required String destination,
     required DateTime targetDate,
     String? notes,
   }) async {
-    if (couple == null) return;
+    final coupleId = me?.coupleId;
+    if (couple == null || coupleId == null) return _notLinkedError;
     final quest = ReunionQuest(
       status: ReunionQuestStatus.pending,
       destination: destination,
@@ -267,25 +282,46 @@ class DashboardController extends ChangeNotifier {
       proposedByUid: myUid,
       notes: notes,
     );
-    await _fs.updateDoc('couples/${me!.coupleId}', {'reunionQuest': quest.toMap()});
+    return _saveQuest(coupleId, quest.toMap());
   }
 
-  Future<void> acceptQuest() async {
-    if (couple == null) return;
-    final current = couple!.reunionQuest;
-    final updated = ReunionQuest(
+  Future<String?> acceptQuest() async {
+    final coupleId = me?.coupleId;
+    final current = couple?.reunionQuest;
+    if (current == null || coupleId == null) return _notLinkedError;
+    final accepted = ReunionQuest(
       status: ReunionQuestStatus.accepted,
       destination: current.destination,
       targetDate: current.targetDate,
       proposedByUid: current.proposedByUid,
       notes: current.notes,
     );
-    await _fs.updateDoc('couples/${me!.coupleId}', {'reunionQuest': updated.toMap()});
+    return _saveQuest(coupleId, {
+      ...accepted.toMap(),
+      'acceptedAt': FieldValue.serverTimestamp(),
+    });
   }
 
-  Future<void> cancelQuest() async {
-    if (couple == null || me?.coupleId == null) return;
-    await _coupleService.clearReunionQuest(me!.coupleId!);
+  Future<String?> cancelQuest() async {
+    final coupleId = me?.coupleId;
+    if (couple == null || coupleId == null) return _notLinkedError;
+    try {
+      await _coupleService.clearReunionQuest(coupleId);
+      return null;
+    } catch (e) {
+      debugPrint('Clearing the quest failed: $e');
+      return _questSaveError;
+    }
+  }
+
+  Future<String?> _saveQuest(String coupleId, Map<String, dynamic> quest) async {
+    try {
+      await _fs.updateDoc('couples/$coupleId', {'reunionQuest': quest});
+      return null;
+    } catch (e) {
+      debugPrint('Saving the quest failed: $e');
+      return _questSaveError;
+    }
   }
 
   @override

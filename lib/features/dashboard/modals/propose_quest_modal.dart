@@ -4,6 +4,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_error_box.dart';
 import '../controllers/dashboard_controller.dart';
 
 class ProposeQuestModal extends StatefulWidget {
@@ -18,6 +19,7 @@ class _ProposeQuestModalState extends State<ProposeQuestModal> {
   final _notes = TextEditingController();
   DateTime? _selectedDate;
   bool _saving = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -46,14 +48,30 @@ class _ProposeQuestModalState extends State<ProposeQuestModal> {
   }
 
   Future<void> _submit() async {
-    if (_destination.text.trim().isEmpty || _selectedDate == null) return;
-    setState(() => _saving = true);
-    await context.read<DashboardController>().proposeQuest(
-          destination: _destination.text.trim().toUpperCase(),
+    final destination = _destination.text.trim();
+    if (destination.isEmpty || _selectedDate == null) {
+      setState(() => _error = 'ADD A DESTINATION AND A TARGET DATE.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final notes = _notes.text.trim();
+    final error = await context.read<DashboardController>().proposeQuest(
+          destination: destination.toUpperCase(),
           targetDate: _selectedDate!,
-          notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+          notes: notes.isEmpty ? null : notes,
         );
-    if (mounted) Navigator.of(context).pop();
+    if (!mounted) return;
+    if (error != null) {
+      setState(() {
+        _saving = false;
+        _error = error;
+      });
+      return;
+    }
+    Navigator.of(context).pop();
   }
 
   @override
@@ -151,6 +169,10 @@ class _ProposeQuestModalState extends State<ProposeQuestModal> {
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
+          if (_error != null) ...[
+            PixelErrorBox(message: _error!),
+            const SizedBox(height: AppSpacing.md),
+          ],
           PixelButton(
             label: _saving ? '...' : '[ PROPOSE QUEST ]',
             style: PixelButtonStyle.coral,

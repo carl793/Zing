@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_error_box.dart';
 import '../controllers/dashboard_controller.dart';
 
 class ReviewQuestModal extends StatefulWidget {
@@ -16,19 +17,30 @@ class ReviewQuestModal extends StatefulWidget {
 
 class _ReviewQuestModalState extends State<ReviewQuestModal> {
   bool _submitting = false;
+  String? _error;
 
-  Future<void> _accept() async {
-    if (_submitting) return;
-    setState(() => _submitting = true);
-    await context.read<DashboardController>().acceptQuest();
-    if (mounted) Navigator.of(context).pop();
-  }
+  Future<void> _accept() => _respond((ctrl) => ctrl.acceptQuest());
 
-  Future<void> _decline() async {
+  Future<void> _decline() => _respond((ctrl) => ctrl.cancelQuest());
+
+  Future<void> _respond(
+    Future<String?> Function(DashboardController ctrl) action,
+  ) async {
     if (_submitting) return;
-    setState(() => _submitting = true);
-    await context.read<DashboardController>().cancelQuest();
-    if (mounted) Navigator.of(context).pop();
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final error = await action(context.read<DashboardController>());
+    if (!mounted) return;
+    if (error != null) {
+      setState(() {
+        _submitting = false;
+        _error = error;
+      });
+      return;
+    }
+    Navigator.of(context).pop();
   }
 
   @override
@@ -136,6 +148,10 @@ class _ReviewQuestModalState extends State<ReviewQuestModal> {
             ),
           ],
           const SizedBox(height: AppSpacing.xl),
+          if (_error != null) ...[
+            PixelErrorBox(message: _error!),
+            const SizedBox(height: AppSpacing.md),
+          ],
           PixelButton(
             label: _submitting ? '...' : '[ ACCEPT QUEST ]',
             style: PixelButtonStyle.yellow,
