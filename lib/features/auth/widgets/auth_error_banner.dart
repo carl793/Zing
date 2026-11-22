@@ -13,8 +13,12 @@ class AuthErrorBanner extends StatelessWidget {
 
     final (message, color) = switch (errorType) {
       AuthErrorType.wrongCredentials => ('✕ INCORRECT EMAIL OR PASSWORD. TRY AGAIN.', AppColors.coral),
+      AuthErrorType.emailInUse => ('✕ THAT EMAIL ALREADY HAS AN ACCOUNT. TRY LOGGING IN.', AppColors.coral),
+      AuthErrorType.weakPassword => ('✕ PASSCODE TOO WEAK. USE AT LEAST 6 CHARACTERS.', AppColors.coral),
+      AuthErrorType.invalidEmail => ('✕ THAT EMAIL ADDRESS LOOKS INVALID.', AppColors.coral),
       AuthErrorType.tooManyAttempts => ('⚠ TOO MANY ATTEMPTS. TRY AGAIN LATER.', AppColors.amber),
       AuthErrorType.network => ('⚠ NO CONNECTION. CHECK YOUR INTERNET.', AppColors.gray),
+      AuthErrorType.googleFailed => ('⚠ GOOGLE SIGN-IN FAILED. TRY AGAIN.', AppColors.coral),
       _ => ('⚠ SOMETHING WENT WRONG. TRY AGAIN.', AppColors.coral),
     };
 

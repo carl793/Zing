@@ -6,6 +6,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pixel_tab_bar.dart';
 import '../../../core/widgets/pixel_text_field.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_error_box.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/services/auth_service.dart';
@@ -26,7 +27,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   final _password = TextEditingController();
   final _confirmPassword = TextEditingController();
   bool _agreedToTerms = false;
-  bool _localError = false;
+
+  // Problems caught before contacting Firebase, with the fields to mark.
+  String? _formError;
+  bool _emailError = false;
+  bool _passwordError = false;
 
   @override
   void dispose() {
@@ -36,22 +41,49 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     super.dispose();
   }
 
+  void _clearFormError() {
+    _formError = null;
+    _emailError = false;
+    _passwordError = false;
+  }
+
+  void _showFormError(String message, {bool email = false, bool password = false}) {
+    setState(() {
+      _formError = message;
+      _emailError = email;
+      _passwordError = password;
+    });
+  }
+
   Future<void> _submit(AuthController controller) async {
-    setState(() => _localError = false);
+    setState(_clearFormError);
     final email = _email.text.trim();
+    final password = _password.text;
     if (!Validators.isValidEmail(email)) {
-      setState(() => _localError = true);
+      _showFormError('✕ ENTER A VALID EMAIL ADDRESS.', email: true);
       return;
     }
-    bool ok;
+    if (password.isEmpty) {
+      _showFormError('✕ ENTER YOUR PASSCODE.', password: true);
+      return;
+    }
+    final bool ok;
     if (_tabIndex == 0) {
-      ok = await controller.login(email, _password.text);
+      ok = await controller.login(email, password);
     } else {
-      if (_password.text != _confirmPassword.text || !_agreedToTerms) {
-        setState(() => _localError = true);
+      if (password.length < 6) {
+        _showFormError('✕ PASSCODE MUST BE AT LEAST 6 CHARACTERS.', password: true);
         return;
       }
-      ok = await controller.register(email, _password.text);
+      if (password != _confirmPassword.text) {
+        _showFormError('✕ PASSCODES DON\'T MATCH.', password: true);
+        return;
+      }
+      if (!_agreedToTerms) {
+        _showFormError('✕ AGREE TO THE TERMS & PRIVACY POLICY TO CONTINUE.');
+        return;
+      }
+      ok = await controller.register(email, password);
     }
     if (ok) await _routeAfterAuth();
   }
@@ -160,10 +192,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 PixelTabBar(
                   labels: const ['LOGIN', 'REGISTER'],
                   activeIndex: _tabIndex,
-                  onTap: (i) => setState(() {
-                    _tabIndex = i;
-                    _localError = false;
-                  }),
+                  onTap: (i) {
+                    controller.clearError();
+                    setState(() {
+                      _tabIndex = i;
+                      _clearFormError();
+                    });
+                  },
                 ),
 
                 // CLEAR GAP BETWEEN TOGGLE AND CONTAINER
@@ -196,7 +231,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                           hint: 'ENTER EMAIL..',
                           controller: _email,
                           keyboardType: TextInputType.emailAddress,
-                          hasError: _localError,
+                          hasError: _emailError,
                         ),
                       ),
                       const SizedBox(height: 24), // Generous field spacing
@@ -210,7 +245,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                               : 'CREATE PASSWORD..',
                           controller: _password,
                           obscureText: true,
-                          hasError: _localError,
+                          hasError: _passwordError,
                         ),
                       ),
 
@@ -223,7 +258,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                             hint: 'RE-ENTER PASSWORD..',
                             controller: _confirmPassword,
                             obscureText: true,
-                            hasError: _localError,
+                            hasError: _passwordError,
                           ),
                         ),
                         const SizedBox(height: 20),
@@ -287,7 +322,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                         ),
                       ],
 
-                      if (controller.errorType != AuthErrorType.none) ...[
+                      if (_formError != null) ...[
+                        const SizedBox(height: 16),
+                        PixelErrorBox(message: _formError!),
+                      ] else if (controller.errorType != AuthErrorType.none) ...[
                         const SizedBox(height: 16),
                         AuthErrorBanner(errorType: controller.errorType),
                       ],

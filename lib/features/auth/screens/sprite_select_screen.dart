@@ -8,9 +8,8 @@ import '../../../core/widgets/onboarding_progress_bar.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/constants/sprite_options.dart';
+import '../../../core/widgets/pixel_error_box.dart';
 import '../../../core/widgets/sprite_selector.dart';
-
-const kPresetSprites = ['🐇', '👻', '🦊', '🐍', '🦄', '🐢', '🌞', '🌡️'];
 
 class SpriteSelectScreen extends StatefulWidget {
   const SpriteSelectScreen({super.key});
@@ -22,6 +21,7 @@ class _SpriteSelectScreenState extends State<SpriteSelectScreen> {
   String _selectedSprite = SpriteOptions.fallback;
   final _name = TextEditingController();
   bool _saving = false;
+  String? _error;
   String? _googleEmail;
 
   @override
@@ -44,14 +44,30 @@ class _SpriteSelectScreenState extends State<SpriteSelectScreen> {
 
   Future<void> _continue() async {
     final name = _name.text.trim();
-    if (name.isEmpty) return;
-    setState(() => _saving = true);
+    if (name.isEmpty) {
+      setState(() => _error = 'ENTER A DISPLAY NAME.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
     final authService = context.read<AuthService>();
-    await authService.saveProfile(
-      uid: authService.currentUser!.uid,
-      displayName: name,
-      avatarSpriteId: _selectedSprite,
-    );
+    try {
+      await authService.saveProfile(
+        uid: authService.currentUser!.uid,
+        displayName: name,
+        avatarSpriteId: _selectedSprite,
+      );
+    } catch (e) {
+      debugPrint('Saving profile failed: $e');
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = "COULDN'T SAVE. CHECK YOUR CONNECTION.";
+      });
+      return;
+    }
     if (!mounted) return;
     // pushReplacementNamed so back button cannot return here
     Navigator.of(context).pushReplacementNamed(AppRoutes.pairing);
@@ -118,6 +134,11 @@ class _SpriteSelectScreenState extends State<SpriteSelectScreen> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xl),
+
+                if (_error != null) ...[
+                  PixelErrorBox(message: _error!),
+                  const SizedBox(height: AppSpacing.md),
+                ],
 
                 PixelButton(
                     label: _saving ? '...' : '[ CONTINUE ]',

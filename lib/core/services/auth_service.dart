@@ -51,12 +51,21 @@ class AuthService {
     return name != null && name.isNotEmpty;
   }
 
-  Future<void> saveProfile({required String uid, required String displayName, required String avatarSpriteId}) {
-    return _firestore.collection('users').doc(uid).update({
+  /// Saves the onboarding profile, first creating the profile document if
+  /// sign-up couldn't (e.g. the connection dropped right after registering).
+  Future<void> saveProfile({required String uid, required String displayName, required String avatarSpriteId}) async {
+    final user = _auth.currentUser;
+    if (user != null && user.uid == uid) {
+      await _createUserDocIfMissing(user, authProvider: _providerOf(user));
+    }
+    await _firestore.collection('users').doc(uid).set({
       'displayName': displayName,
       'avatarSpriteId': avatarSpriteId,
-    });
+    }, SetOptions(merge: true));
   }
+
+  static String _providerOf(User user) =>
+      user.providerData.any((p) => p.providerId == 'google.com') ? 'google' : 'password';
 
   Future<void> _createUserDocIfMissing(User user, {required String authProvider}) async {
     final ref = _firestore.collection('users').doc(user.uid);
