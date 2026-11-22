@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/models/room_model.dart';
@@ -112,20 +112,12 @@ class PairingController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void copyCode(BuildContext context) {
-    if (generatedCode == null) return;
-    Clipboard.setData(ClipboardData(text: generatedCode!));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: const Color(0xFF2D2B55),
-        content: Text('CODE COPIED!',
-            style: const TextStyle(
-                fontFamily: 'PressStart2P',
-                fontSize: 8,
-                color: Color(0xFFFFE600))),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+  /// Copies the code to the clipboard. False when there is nothing to copy.
+  bool copyCode() {
+    final code = generatedCode;
+    if (code == null) return false;
+    Clipboard.setData(ClipboardData(text: code));
+    return true;
   }
 
   // --- Join Room state ---

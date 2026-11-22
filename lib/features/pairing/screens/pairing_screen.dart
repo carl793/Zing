@@ -6,6 +6,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pixel_button.dart';
 import '../../../core/widgets/pixel_tab_bar.dart';
 import '../../../core/widgets/onboarding_progress_bar.dart';
+import '../../../core/widgets/pixel_snack_bar.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/router/app_router.dart';
@@ -66,17 +67,7 @@ class _PairingView extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const OnboardingProgressBar(currentStep: 3),
-              const SizedBox(height: AppSpacing.lg),
-
-              GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Row(children: [
-                  Text('◀ BACK',
-                      style: AppTextStyles.caption
-                          .copyWith(color: AppColors.cyan)),
-                ]),
-              ),
-              const SizedBox(height: AppSpacing.lg),
+              const SizedBox(height: AppSpacing.xl),
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -253,7 +244,9 @@ class _CreateWaiting extends StatelessWidget {
                     .copyWith(color: Colors.white, fontSize: 20),
               ),
               GestureDetector(
-                onTap: () => ctrl.copyCode(context),
+                onTap: () {
+                  if (ctrl.copyCode()) showPixelSnackBar(context, 'CODE COPIED!');
+                },
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: AppSpacing.sm, vertical: 6),

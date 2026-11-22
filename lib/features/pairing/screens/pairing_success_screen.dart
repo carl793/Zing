@@ -7,7 +7,10 @@ import '../../../core/widgets/pixel_button.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/constants/sprite_options.dart';
+import '../../../core/models/couple_model.dart';
 import '../../../core/models/user_model.dart';
+import '../../../core/widgets/sprite_avatar.dart';
 
 class PairingSuccessScreen extends StatefulWidget {
   const PairingSuccessScreen({super.key});
@@ -17,8 +20,8 @@ class PairingSuccessScreen extends StatefulWidget {
 }
 
 class _PairingSuccessScreenState extends State<PairingSuccessScreen> {
-  String _mySprite = '👻';
-  String _partnerSprite = '😈';
+  String _mySprite = SpriteOptions.fallback;
+  String _partnerSprite = SpriteOptions.fallback;
   String _myName = '';
   String _partnerName = '';
   bool _loaded = false;
@@ -34,32 +37,49 @@ class _PairingSuccessScreenState extends State<PairingSuccessScreen> {
     final fs = context.read<FirestoreService>();
     final uid = auth.currentUser!.uid;
 
-    final mySnap = await fs.doc('users/$uid').get();
-    final me = UserModel.fromMap(uid, mySnap.data()!);
-
-    if (me.coupleId != null) {
-      final coupleSnap = await fs.doc('couples/${me.coupleId}').get();
-      final memberUids = List<String>.from(coupleSnap.data()?['memberUids'] ?? []);
-      final partnerUid = memberUids.firstWhere((u) => u != uid, orElse: () => '');
-
-      if (partnerUid.isNotEmpty) {
-        final partnerSnap = await fs.doc('users/$partnerUid').get();
-        final partner = UserModel.fromMap(partnerUid, partnerSnap.data()!);
-        setState(() {
-          _myName = me.displayName;
-          _partnerName = partner.displayName;
-          _mySprite = me.avatarSpriteId;
-          _partnerSprite = partner.avatarSpriteId;
-          _loaded = true;
-        });
-        return;
+    UserModel? me;
+    UserModel? partner;
+    try {
+      final mySnap = await fs.doc('users/$uid').get();
+      me = UserModel.fromMap(uid, mySnap.data() ?? const <String, dynamic>{});
+      final coupleId = me.coupleId;
+      if (coupleId != null && coupleId.isNotEmpty) {
+        final coupleData = (await fs.doc('couples/$coupleId').get()).data();
+        final partnerUid = coupleData == null
+            ? ''
+            : CoupleModel.fromMap(coupleId, coupleData).partnerUid(uid);
+        if (partnerUid.isNotEmpty) {
+          final partnerData = (await fs.doc('users/$partnerUid').get()).data();
+          if (partnerData != null) {
+            partner = UserModel.fromMap(partnerUid, partnerData);
+          }
+        }
       }
+    } catch (e) {
+      // The celebration still shows; only the names and sprites are missing.
+      debugPrint('Loading the paired profiles failed: $e');
     }
+    if (!mounted) return;
+    final (loadedMe, loadedPartner) = (me, partner);
     setState(() {
-      _myName = me.displayName;
+      if (loadedMe != null) {
+        _myName = loadedMe.displayName;
+        if (loadedMe.avatarSpriteId.isNotEmpty) _mySprite = loadedMe.avatarSpriteId;
+      }
+      if (loadedPartner != null) {
+        _partnerName = loadedPartner.displayName;
+        if (loadedPartner.avatarSpriteId.isNotEmpty) {
+          _partnerSprite = loadedPartner.avatarSpriteId;
+        }
+      }
       _loaded = true;
     });
   }
+
+  // Blank until loaded, so the default sprite doesn't flash first.
+  Widget _sprite(String spriteId) => _loaded
+      ? SpriteAvatar(spriteId: spriteId, size: 56)
+      : const SizedBox(width: 56, height: 56);
 
   @override
   Widget build(BuildContext context) {
@@ -77,12 +97,12 @@ class _PairingSuccessScreenState extends State<PairingSuccessScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(_mySprite, style: const TextStyle(fontSize: 44)),
+                  _sprite(_mySprite),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 12),
                     child: Text('❤️', style: TextStyle(fontSize: 28)),
                   ),
-                  Text(_partnerSprite, style: const TextStyle(fontSize: 44)),
+                  _sprite(_partnerSprite),
                 ],
               ),
               const SizedBox(height: AppSpacing.xl),
