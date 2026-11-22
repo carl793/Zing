@@ -59,6 +59,16 @@ void main() {
       expect(couple.partnerUid('p1'), 'p2');
       expect(couple.partnerUid('p2'), 'p1');
     });
+
+    // Regression: Settings used to round-trip through a toMap() that stored
+    // linkedAt as a DateTime, which fromMap then failed to cast.
+    test('copyWith changes only the given fields', () {
+      final updated = couple.copyWith(unitPref: 'km');
+      expect(updated.unitPref, 'km');
+      expect(updated.linkedAt, couple.linkedAt);
+      expect(updated.memberUids, couple.memberUids);
+      expect(updated.reunionQuest.destination, 'DAVAO');
+    });
   });
 
   group('CapsuleModel.fromMap', () {

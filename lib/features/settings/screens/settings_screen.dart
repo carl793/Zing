@@ -181,12 +181,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _toggleAlerts(bool val) async {
+    final coupleId = _me?.coupleId;
+    if (coupleId == null) return;
+    final fs = context.read<FirestoreService>();
     setState(() => _alertsOn = val);
-    if (_me?.coupleId != null) {
-      await context.read<FirestoreService>().updateDoc(
-        'couples/${_me!.coupleId}',
-        {'settings.reunionAlerts': val},
-      );
+    try {
+      await fs.updateDoc('couples/$coupleId', {'settings.reunionAlerts': val});
+    } catch (e) {
+      debugPrint('Saving reunion alerts failed: $e');
+      if (!mounted) return;
+      setState(() => _alertsOn = !val);
+      _showMessage('COULD NOT SAVE ALERTS. TRY AGAIN.');
     }
   }
 
@@ -429,18 +434,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _setUnit(String unit) async {
-    if (_me?.coupleId == null) return;
-    setState(() {
-      if (_couple != null) {
-        _couple = CoupleModel.fromMap(_couple!.coupleId, {
-          ..._couple!.toMap(),
-          'unitPref': unit,
-        });
-      }
-    });
-    await context.read<FirestoreService>().updateDoc(
-      'couples/${_me!.coupleId}',
-      {'unitPref': unit},
+    final previous = _couple;
+    if (previous == null || previous.unitPref == unit) return;
+    final fs = context.read<FirestoreService>();
+    setState(() => _couple = previous.copyWith(unitPref: unit));
+    try {
+      await fs.updateDoc('couples/${previous.coupleId}', {'unitPref': unit});
+    } catch (e) {
+      debugPrint('Saving unit preference failed: $e');
+      if (!mounted) return;
+      setState(() => _couple = previous);
+      _showMessage('COULD NOT SAVE THE UNIT. TRY AGAIN.');
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppColors.purple,
+        content: Text(
+          message,
+          style: AppTextStyles.caption.copyWith(color: AppColors.yellow),
+        ),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 }
@@ -653,17 +670,4 @@ class _Row extends StatelessWidget {
       ],
     );
   }
-}
-
-// Add toMap() to CoupleModel if missing — used by _setUnit above
-extension CoupleModelX on CoupleModel {
-  Map<String, dynamic> toMap() => {
-    'memberUids': memberUids,
-    'pairingCode': pairingCode,
-    'status': status.name,
-    'unitPref': unitPref,
-    'linkedAt': linkedAt,
-    'settings': settings.toMap(),
-    'reunionQuest': reunionQuest.toMap(),
-  };
 }

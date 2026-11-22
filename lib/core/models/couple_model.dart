@@ -95,6 +95,24 @@ class CoupleModel {
         settings: CoupleSettings.fromMap(data['settings']),
       );
 
+  CoupleModel copyWith({
+    CoupleStatus? status,
+    String? unitPref,
+    ReunionQuest? reunionQuest,
+    CoupleSettings? settings,
+  }) =>
+      CoupleModel(
+        coupleId: coupleId,
+        memberUids: memberUids,
+        pairingCode: pairingCode,
+        status: status ?? this.status,
+        linkedAt: linkedAt,
+        anniversaryDate: anniversaryDate,
+        unitPref: unitPref ?? this.unitPref,
+        reunionQuest: reunionQuest ?? this.reunionQuest,
+        settings: settings ?? this.settings,
+      );
+
   /// The other partner's uid, given the current user's uid.
   String partnerUid(String myUid) => memberUids.firstWhere((u) => u != myUid, orElse: () => '');
 }
