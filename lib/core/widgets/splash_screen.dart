@@ -7,7 +7,7 @@ import '../theme/app_text_styles.dart';
 
 /// Branded launch screen shown while the signed-in destination is resolved.
 class SplashScreen extends StatefulWidget {
-  final Future<String> Function() resolveRoute;
+  final Future<String> Function(BuildContext context) resolveRoute;
 
   const SplashScreen({super.key, required this.resolveRoute});
 
@@ -32,7 +32,7 @@ class _SplashScreenState extends State<SplashScreen>
     String route;
     try {
       final results = await Future.wait<String>([
-        widget.resolveRoute(),
+        widget.resolveRoute(context),
         Future<void>.delayed(const Duration(milliseconds: 900)).then(
           (_) => '',
         ),

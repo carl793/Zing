@@ -161,22 +161,33 @@ class FirestoreService {
 
   // ---------- Pairing: claiming your own link ----------
 
-  /// Writes [coupleId] to the caller's own user document. Merging means this
-  /// never fails on a missing document, and it is safe to call more than once.
-  Future<void> claimCoupleId({required String uid, required String coupleId}) =>
+  /// Writes [coupleId] (or null, to clear the link) to the caller's own user
+  /// document. Merging means this never fails on a missing document, and it
+  /// is safe to call more than once.
+  Future<void> claimCoupleId({required String uid, required String? coupleId}) =>
       setDoc('users/$uid', {'coupleId': coupleId});
 
-  /// Returns the couple [uid] is linked to, or null while still unpaired.
+  /// Returns the active couple [uid] belongs to, or null while unpaired.
   ///
-  /// A link is only ever written by the account that performed it, so an
-  /// account that was signed out while its partner joined has no `coupleId` of
-  /// its own yet. The room it created carries the id, so the link is claimed
-  /// here. Never throws: routing must not break if the lookup fails.
+  /// Rules only let an account write its own profile, so each account keeps
+  /// its own link up to date here:
+  /// - A link to a couple that has since been unlinked is cleared, which
+  ///   sends both partners back to pairing.
+  /// - An account that was signed out while its partner joined has no link
+  ///   of its own yet. The room it created carries the couple id, so the
+  ///   link is claimed here.
+  ///
+  /// Never throws: routing must not break if the lookup fails. When the
+  /// couple can't be checked (e.g. offline), a stored link is trusted.
   Future<String?> recoverCoupleId(String uid) async {
     try {
       final userSnap = await _db.collection('users').doc(uid).get();
       final stored = userSnap.data()?['coupleId'] as String?;
-      if (stored != null && stored.isNotEmpty) return stored;
+      if (stored != null && stored.isNotEmpty) {
+        if (await _coupleStatus(stored) != CoupleStatus.unlinked) return stored;
+        await claimCoupleId(uid: uid, coupleId: null);
+        return null;
+      }
 
       // A server-side orderBy on a different field than the where
       // clause needs a composite index that is not deployed, so the
@@ -201,12 +212,30 @@ class FirestoreService {
         if (data['status'] != RoomStatus.linked.name) continue;
         final coupleId = data['coupleId'] as String?;
         if (coupleId == null || coupleId.isEmpty) continue;
+        // Skip links that were unlinked later, or can't be checked now.
+        if (await _coupleStatus(coupleId) != CoupleStatus.active) continue;
         await claimCoupleId(uid: uid, coupleId: coupleId);
         return coupleId;
       }
       return null;
     } catch (e) {
       debugPrint('recoverCoupleId failed for $uid: $e');
+      return null;
+    }
+  }
+
+  /// The couple's status, or null when it can't be read right now (e.g.
+  /// offline). A couple that is missing, or that this account isn't allowed
+  /// to read, counts as unlinked.
+  Future<CoupleStatus?> _coupleStatus(String coupleId) async {
+    try {
+      final snap = await _db.collection('couples').doc(coupleId).get();
+      final data = snap.data();
+      if (!snap.exists || data == null) return CoupleStatus.unlinked;
+      return CoupleModel.fromMap(coupleId, data).status;
+    } on FirebaseException catch (e) {
+      return e.code == 'permission-denied' ? CoupleStatus.unlinked : null;
+    } catch (_) {
       return null;
     }
   }

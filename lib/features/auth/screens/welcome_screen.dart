@@ -94,18 +94,21 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   Future<void> _routeAfterAuth() async {
     if (!mounted) return;
-    final authService = context.read<AuthService>();
-    final firestore = context.read<FirestoreService>();
-    final uid = authService.currentUser!.uid;
-    final hasProfile = await authService.hasCompletedProfile(uid);
-    // Also claims a link made while this account was signed out.
-    final coupleId = await firestore.recoverCoupleId(uid);
+    final String route;
+    try {
+      route = await AppRouter.resolveDestination(
+        auth: context.read<AuthService>(),
+        firestore: context.read<FirestoreService>(),
+      );
+    } catch (e) {
+      debugPrint('Routing after sign-in failed: $e');
+      if (mounted) {
+        _showFormError("⚠ SIGNED IN, BUT YOUR PROFILE COULDN'T LOAD. "
+            'CHECK YOUR CONNECTION AND TRY AGAIN.');
+      }
+      return;
+    }
     if (!mounted) return;
-    final route = !hasProfile
-        ? AppRoutes.spriteSelect
-        : (coupleId == null || coupleId.isEmpty
-            ? AppRoutes.pairing
-            : AppRoutes.shell);
     Navigator.of(context).pushReplacementNamed(route);
   }
 
