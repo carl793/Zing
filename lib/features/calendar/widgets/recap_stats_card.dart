@@ -20,9 +20,10 @@ class RecapStatsCard extends StatelessWidget {
     required this.daysUntilNextMeetup,
   });
 
-  String get _daysTogetherText =>
-      'DAYS TOGETHER THIS MONTH: ${daysTogether.toString().padLeft(2, '0')} '
-      '${daysTogether == 1 ? 'DAY' : 'DAYS'}';
+  String get _daysTogetherText => daysTogether == 0
+      ? 'NO MEMORIES LOGGED YET THIS MONTH.'
+      : 'DAYS TOGETHER THIS MONTH: ${daysTogether.toString().padLeft(2, '0')} '
+          '${daysTogether == 1 ? 'DAY' : 'DAYS'}';
 
   String get _lastMetUpText {
     final days = daysSinceLastMeetup;
@@ -64,27 +65,8 @@ class RecapStatsCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.md),
-          if (daysTogether == 0) _buildEmpty() else ..._buildStats(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmpty() {
-    return SizedBox(
-      width: double.infinity,
-      child: Column(
-        children: [
-          const Icon(Icons.calendar_month, size: 26, color: AppColors.gray),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'NO MEMORIES LOGGED\nYET THIS MONTH.',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.caption.copyWith(
-              color: AppColors.gray,
-              height: 1.8,
-            ),
-          ),
+          // Last/next meetup stay visible even in a month with no memories.
+          ..._buildStats(),
         ],
       ),
     );
@@ -94,7 +76,7 @@ class RecapStatsCard extends StatelessWidget {
     return [
       _StatLine(
         icon: Icons.favorite,
-        color: AppColors.coral,
+        color: daysTogether == 0 ? AppColors.gray : AppColors.coral,
         text: _daysTogetherText,
       ),
       const SizedBox(height: AppSpacing.sm),
