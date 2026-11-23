@@ -83,6 +83,12 @@ service cloud.firestore {
         && roomDataAfter(code).coupleId == coupleId;
     }
 
+    // Ending the link, signed by whoever ends it.
+    function isUnlinking() {
+      return request.resource.data.status == 'unlinked'
+        && request.resource.data.get('unlinkedByUid', null) == request.auth.uid;
+    }
+
     // ── users ───────────────────────────────────────────────────────────
     // Your own profile and your partner's. Profiles are only ever read by
     // id; listing them would expose every account's email and location.
@@ -110,10 +116,15 @@ service cloud.firestore {
     match /couples/{coupleId} {
       allow create: if isSignedIn() && coupleCreatedByJoin(coupleId);
       allow read: if isCoupleMember(coupleId);
-      // Members change the quest, settings and link status, never who the
-      // members are.
+      // Members change the quest, settings and unit, or unlink. Who the
+      // members are never changes, and an unlinked couple is frozen: if it
+      // could be set back to active, an ex-partner could regain access to
+      // the other's profile and location.
       allow update: if isCoupleMember(coupleId)
-        && unchanged(['memberUids', 'pairingCode', 'linkedAt']);
+        && resource.data.get('status', 'active') == 'active'
+        && changesOnly(['reunionQuest', 'settings', 'unitPref', 'anniversaryDate',
+             'status', 'unlinkedByUid', 'unlinkedAt'])
+        && (unchanged(['status', 'unlinkedByUid', 'unlinkedAt']) || isUnlinking());
 
       match /memories/{memoryId} {
         allow read: if isCoupleMember(coupleId);
