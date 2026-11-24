@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../../core/models/comment_model.dart';
 import '../../../core/models/memory_model.dart';
+import '../../../core/services/audio_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../core/widgets/pixel_error_box.dart';
-import '../../../core/widgets/pixel_inset_field.dart';
+import '../../../core/theme/pixel_decorations.dart';
+import '../../../core/utils/date_utils.dart';
+import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_field.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_panel.dart';
 import '../controllers/calendar_controller.dart';
 
 /// Live comment feed for one memory. Only the partner of the entry's author
@@ -36,6 +42,7 @@ class _CommentsSectionState extends State<CommentsSection> {
     super.initState();
     _stream =
         context.read<CalendarController>().streamComments(widget.memory.memoryId);
+    _input.addListener(() => setState(() {}));
   }
 
   @override
@@ -56,6 +63,7 @@ class _CommentsSectionState extends State<CommentsSection> {
         .read<CalendarController>()
         .addComment(widget.memory, text);
     if (!mounted) return;
+    if (error == null) AudioService.instance.playSfx(AppSfx.save);
     setState(() {
       _sending = false;
       _error = error;
@@ -67,110 +75,104 @@ class _CommentsSectionState extends State<CommentsSection> {
   Widget build(BuildContext context) {
     final ctrl = context.read<CalendarController>();
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: const Color(0xFF242149),
-        border: Border.all(color: Colors.black, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'PARTNER LOG COMMENTS',
-            style: AppTextStyles.label.copyWith(color: AppColors.cyan, fontSize: 7),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          StreamBuilder<List<CommentModel>>(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const PixelLabel('COMMENTS'),
+        PixelWell(
+          child: StreamBuilder<List<CommentModel>>(
             stream: _stream,
             builder: (context, snapshot) {
               final comments = snapshot.data ?? const <CommentModel>[];
               if (comments.isEmpty) {
-                return Text('NO COMMENTS YET.', style: AppTextStyles.caption);
+                return Text(
+                  widget.canComment
+                      ? 'No comments yet. Leave the first one.'
+                      : 'No comments yet. Only ${ctrl.partnerName} can comment '
+                          'on your entry.',
+                  style: AppTextStyles.caption,
+                );
               }
               return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: comments.map((c) {
-                  final mine = ctrl.isMine(c.authorUid);
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text(
-                      '${ctrl.nameFor(c.authorUid)}: ${c.text}',
-                      style: AppTextStyles.body.copyWith(
-                        fontSize: 6,
-                        height: 1.7,
-                        color: mine ? AppColors.coral : AppColors.cyan,
-                      ),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (i, comment) in comments.indexed) ...[
+                    if (i > 0) const SizedBox(height: AppSpacing.md),
+                    _Bubble(
+                      comment: comment,
+                      mine: ctrl.isMine(comment.authorUid),
+                      name: ctrl.nameFor(comment.authorUid),
                     ),
-                  );
-                }).toList(),
+                  ],
+                ],
               );
             },
           ),
-          const SizedBox(height: AppSpacing.md),
-          if (_error != null) ...[
-            PixelErrorBox(message: _error!),
-            const SizedBox(height: AppSpacing.sm),
-          ],
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: AppSpacing.sm),
+          PixelNote.error(_error!),
+        ],
+        if (widget.canComment) ...[
+          const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
               Expanded(
-                child: PixelInsetField(
-                  hint: widget.canComment ? 'ADD COMMENT...' : 'PARTNER COMMENTS ONLY',
+                child: PixelField(
+                  hint: 'Say something...',
                   controller: _input,
-                  enabled: widget.canComment,
                   maxLength: 200,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _send(),
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              _SendButton(
-                enabled: widget.canComment && !_sending,
-                onTap: _send,
+              PixelIconButton(
+                icon: PixelIcons.send,
+                label: 'Send',
+                tone: PixelTone.coral,
+                size: 48,
+                onPressed:
+                    _sending || _input.text.trim().isEmpty ? null : _send,
               ),
             ],
           ),
         ],
-      ),
+      ],
     );
   }
 }
 
-class _SendButton extends StatelessWidget {
-  final bool enabled;
-  final VoidCallback onTap;
-  const _SendButton({required this.enabled, required this.onTap});
+class _Bubble extends StatelessWidget {
+  final CommentModel comment;
+  final bool mine;
+  final String name;
+  const _Bubble({
+    required this.comment,
+    required this.mine,
+    required this.name,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-        decoration: BoxDecoration(
-          color: enabled ? AppColors.coral : const Color(0xFF555555),
-          border: Border.all(color: Colors.black, width: 2),
-          boxShadow: enabled
-              ? const [
-                  BoxShadow(
-                    color: Colors.black,
-                    offset: Offset(2, 2),
-                    blurRadius: 0,
-                  ),
-                ]
-              : null,
+    final color = mine ? AppColors.coral : AppColors.cyan;
+    return Column(
+      crossAxisAlignment:
+          mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          margin: EdgeInsets.only(left: mine ? 24 : 0, right: mine ? 0 : 24),
+          decoration: PixelOutline(color: color, fill: AppColors.purple),
+          child: Text(comment.text, style: AppTextStyles.body),
         ),
-        child: Text(
-          '[SEND]',
-          style: AppTextStyles.caption.copyWith(
-            fontSize: 6,
-            color: enabled ? Colors.black : const Color(0xFF888888),
-          ),
+        const SizedBox(height: 4),
+        Text(
+          '$name, ${ZingDateUtils.shortLabel(ZingDateUtils.fromLocal(comment.createdAt))}',
+          style: AppTextStyles.caption.copyWith(color: color),
         ),
-      ),
+      ],
     );
   }
 }

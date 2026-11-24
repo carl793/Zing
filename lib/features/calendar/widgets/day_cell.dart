@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../core/widgets/pixel_dashed_border.dart';
+import '../../../core/theme/pixel_decorations.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_pressable.dart';
 import '../controllers/calendar_controller.dart';
 
-/// One calendar tile. Appearance is driven entirely by [visual].
+/// One calendar tile. Days that hold something stand out of the grid; the rest
+/// lie flat in it.
 class DayCell extends StatelessWidget {
-  static const Color _memoryText = Color(0xFF3A0016);
-  static const Color _memoryAccent = Color(0xFF7A0030);
-
   final int dayNumber;
   final DayVisual visual;
-  final String? label;
+  final bool isToday;
   final int entryCount;
   final VoidCallback onTap;
 
@@ -21,99 +21,103 @@ class DayCell extends StatelessWidget {
     required this.dayNumber,
     required this.visual,
     required this.onTap,
-    this.label,
+    this.isToday = false,
     this.entryCount = 0,
   });
 
+  /// How a kind of day looks: its block, or null to lie flat, and its mark.
+  static (PixelTone?, PixelIcons?, Color) styleOf(DayVisual visual) =>
+      switch (visual) {
+        DayVisual.memory => (
+            PixelTone.coral,
+            PixelIcons.heart,
+            PixelTone.coral.shade,
+          ),
+        DayVisual.nextVisit => (
+            PixelTone.yellow,
+            PixelIcons.star,
+            PixelTone.yellow.shade,
+          ),
+        DayVisual.planned => (
+            PixelTone.neutral,
+            PixelIcons.clock,
+            AppColors.yellow,
+          ),
+        DayVisual.unloggedPlan => (null, PixelIcons.clock, AppColors.faint),
+        DayVisual.today || DayVisual.normal => (null, null, AppColors.gray),
+      };
+
   @override
   Widget build(BuildContext context) {
-    final isMemory = visual == DayVisual.memory;
+    final (tone, icon, mark) = styleOf(visual);
+    final number = tone?.text ?? (isToday ? AppColors.cyan : AppColors.gray);
 
-    final Color? dashedColor = switch (visual) {
-      DayVisual.planned || DayVisual.nextVisit => AppColors.yellow,
-      DayVisual.unloggedPlan => AppColors.gray,
-      _ => null,
-    };
-
-    final Color borderColor = dashedColor != null
-        ? Colors.transparent
-        : (visual == DayVisual.today ? AppColors.cyan : Colors.black);
-
-    Widget cell = Container(
-      decoration: BoxDecoration(
-        color: isMemory ? AppColors.coral : AppColors.purple,
-        border: Border.all(color: borderColor, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    return PixelPressable(
+      onPressed: onTap,
+      semanticLabel: _spoken,
+      builder: (_, pressed) => Container(
+        decoration: tone == null
+            ? PixelOutline(
+                color: pressed
+                    ? AppColors.yellow
+                    : isToday
+                        ? AppColors.cyan
+                        : AppColors.ink,
+                fill: const Color(0xFF232149),
+              )
+            : PixelRaised(
+                tone: tone,
+                depth: 3,
+                shadow: 2,
+                pressed: pressed,
+                outline: isToday ? AppColors.cyan : AppColors.ink,
+              ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   '$dayNumber',
-                  style: AppTextStyles.body.copyWith(
-                    fontSize: 9,
-                    color: isMemory ? _memoryText : Colors.white,
+                  style: AppTextStyles.button.copyWith(
+                    color: number,
+                    height: 1.1,
                   ),
                 ),
-                if (isMemory && label != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2, left: 2, right: 2),
-                    child: Text(
-                      label!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.caption.copyWith(
-                        fontSize: 6,
-                        color: _memoryAccent,
-                      ),
-                    ),
+                if (icon != null) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      PixelIcon(icon, color: mark, size: 10),
+                      if (entryCount > 1) ...[
+                        const SizedBox(width: 2),
+                        PixelIcon(icon, color: mark, size: 10),
+                      ],
+                    ],
                   ),
+                ],
               ],
             ),
-          ),
-          Positioned(top: 2, right: 2, child: _badge()),
-        ],
+          ],
+        ),
       ),
-    );
-
-    if (dashedColor != null) {
-      cell = PixelDashedBorder(color: dashedColor, child: cell);
-    }
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: cell,
     );
   }
 
-  Widget _badge() {
-    switch (visual) {
-      case DayVisual.memory:
-        return entryCount >= 2
-            ? Text(
-                'x2',
-                style: AppTextStyles.caption.copyWith(
-                  fontSize: 6,
-                  color: _memoryAccent,
-                ),
-              )
-            : const Icon(Icons.favorite, size: 7, color: _memoryAccent);
-      case DayVisual.nextVisit:
-        return const Icon(Icons.star, size: 8, color: AppColors.yellow);
-      case DayVisual.planned:
-        return const Icon(Icons.schedule, size: 7, color: AppColors.yellow);
-      case DayVisual.unloggedPlan:
-        return const Icon(Icons.schedule, size: 7, color: AppColors.gray);
-      case DayVisual.today:
-      case DayVisual.normal:
-        return const SizedBox.shrink();
-    }
+  String get _spoken {
+    final what = switch (visual) {
+      DayVisual.memory => entryCount == 1 ? 'a memory' : '$entryCount memories',
+      DayVisual.nextVisit => 'next visit',
+      DayVisual.planned => 'planned',
+      DayVisual.unloggedPlan => 'plan not logged',
+      DayVisual.today || DayVisual.normal => null,
+    };
+    return [
+      '$dayNumber',
+      if (isToday) 'today',
+      ?what,
+    ].join(', ');
   }
 }

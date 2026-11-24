@@ -10,7 +10,7 @@ import 'package:zing/core/services/location_service.dart';
 import 'package:zing/core/services/storage_service.dart';
 import 'package:zing/core/theme/app_theme.dart';
 import 'package:zing/core/utils/date_utils.dart';
-import 'package:zing/core/widgets/remote_photo.dart';
+import 'package:zing/core/photos/pixel_photo.dart';
 import 'package:zing/data/repositories/capsule_repository.dart';
 import 'package:zing/data/repositories/couple_repository.dart';
 import 'package:zing/data/repositories/memory_repository.dart';
@@ -179,7 +179,10 @@ void main() {
       if (tap != null) {
         await tester.ensureVisible(find.text(tap));
         await tester.tap(find.text(tap));
-        await tester.pumpAndSettle();
+        // Settling would outlast the message it ends with.
+        for (var i = 0; i < 4; i++) {
+          await tester.pump(const Duration(milliseconds: 250));
+        }
       }
       return result;
     }
@@ -187,25 +190,25 @@ void main() {
     setUp(() => location = FakeLocation());
 
     testWidgets('explains first, then asks the system', (tester) async {
-      expect(await run(tester, '[ CONTINUE ]'), isTrue);
+      expect(await run(tester, 'CONTINUE'), isTrue);
       expect(location.prompts, 1);
     });
 
     testWidgets('"not now" never reaches the system prompt', (tester) async {
-      expect(await run(tester, '[ NOT NOW ]'), isFalse);
+      expect(await run(tester, 'NOT NOW'), isFalse);
       expect(location.prompts, 0);
     });
 
     testWidgets('a refusal is accepted with a fallback', (tester) async {
       location.afterPrompt = LocationAccess.denied;
-      expect(await run(tester, '[ CONTINUE ]'), isFalse);
+      expect(await run(tester, 'CONTINUE'), isFalse);
       expect(find.textContaining('HOME CITY'), findsOneWidget);
     });
 
     for (final access in [LocationAccess.blocked, LocationAccess.serviceOff]) {
       testWidgets('$access leads to settings', (tester) async {
         location.now = access;
-        expect(await run(tester, '[ OPEN SETTINGS ]'), isFalse);
+        expect(await run(tester, 'OPEN SETTINGS'), isFalse);
         expect(location.settingsOpened, 1);
         expect(location.prompts, 0);
       });
@@ -291,8 +294,8 @@ void main() {
       await tester.pump();
       expect(find.textContaining("ISN'T READY"), findsOneWidget);
       expect(find.text('SURPRISE'), findsNothing);
-      await tester.ensureVisible(find.text('[ RETRY ]'));
-      await tester.tap(find.text('[ RETRY ]'));
+      await tester.ensureVisible(find.text('RETRY'));
+      await tester.tap(find.text('RETRY'));
       await tester.pump();
       await tester.pump();
       expect(find.text('SURPRISE'), findsOneWidget);
@@ -394,7 +397,10 @@ void main() {
             Provider.value(value: StorageService()),
             Provider<LocationService>.value(value: location),
           ],
-          child: MaterialApp(theme: AppTheme.dark, home: child),
+          child: MaterialApp(
+            theme: AppTheme.dark,
+            home: Scaffold(body: child),
+          ),
         ));
         await tester.runAsync(settle);
         await tester.pump();
@@ -405,7 +411,7 @@ void main() {
       await show(Scaffold(
         body: SingleChildScrollView(child: DistanceCard(controller: ctrl)),
       ));
-      expect(find.text('[ SHARE MY LOCATION ]'), findsOneWidget);
+      expect(find.text('SHARE MY LOCATION'), findsOneWidget);
       await show(const CalendarScreen());
       await show(const VaultScreen());
       await show(const SettingsScreen());

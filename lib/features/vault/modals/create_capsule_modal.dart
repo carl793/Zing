@@ -5,15 +5,21 @@ import 'package:provider/provider.dart';
 
 import '../../../core/models/capsule_model.dart';
 import '../../../core/permissions/permission_flows.dart';
+import '../../../core/photos/photo_viewer.dart';
+import '../../../core/photos/pixel_photo.dart';
+import '../../../core/services/audio_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/theme/pixel_decorations.dart';
+import '../../../core/utils/date_utils.dart';
 import '../../../core/widgets/pixel_button.dart';
-import '../../../core/widgets/pixel_error_box.dart';
-import '../../../core/widgets/pixel_inset_field.dart';
+import '../../../core/widgets/pixel_controls.dart';
+import '../../../core/widgets/pixel_field.dart';
+import '../../../core/widgets/pixel_icon.dart';
 import '../../../core/widgets/pixel_modal_shell.dart';
-import '../../../core/widgets/sprite_avatar.dart';
+import '../../../core/widgets/pixel_panel.dart';
 import '../controllers/vault_controller.dart';
 import '../controllers/voice_recorder.dart';
 
@@ -28,7 +34,6 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
   final _titleCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   DateTime? _unlockDate;
-  TimeOfDay _unlockTime = const TimeOfDay(hour: 12, minute: 0);
   String? _formError;
 
   // The draft belongs to this form: closing it throws everything away and
@@ -57,36 +62,31 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
     super.dispose();
   }
 
+  bool _hasUnsavedWork() =>
+      _titleCtrl.text.trim().isNotEmpty ||
+      _noteCtrl.text.trim().isNotEmpty ||
+      _photo != null ||
+      _voice.status != VoiceStatus.idle;
+
   Future<void> _pickDateTime() async {
+    FocusScope.of(context).unfocus();
+    final now = DateTime.now();
+    final current = _unlockDate;
     final date = await showDatePicker(
       context: context,
-      initialDate: DateTime.now().add(const Duration(days: 7)),
-      firstDate: DateTime.now().add(const Duration(hours: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 3650)),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: AppColors.yellow,
-            surface: AppColors.purple,
-          ),
-        ),
-        child: child!,
-      ),
+      initialEntryMode: DatePickerEntryMode.calendarOnly,
+      initialDate: current ?? now.add(const Duration(days: 7)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 3650)),
     );
     if (date == null || !mounted) return;
 
     final time = await showTimePicker(
       context: context,
-      initialTime: _unlockTime,
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: AppColors.yellow,
-            surface: AppColors.purple,
-          ),
-        ),
-        child: child!,
-      ),
+      initialEntryMode: TimePickerEntryMode.dialOnly,
+      initialTime: current == null
+          ? const TimeOfDay(hour: 12, minute: 0)
+          : TimeOfDay.fromDateTime(current),
     );
     if (time == null || !mounted) return;
 
@@ -98,28 +98,20 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
         time.hour,
         time.minute,
       );
-      _unlockTime = time;
     });
   }
 
-  String get _unlockDateDisplay {
-    if (_unlockDate == null) return 'TAP TO SET DATE & TIME..';
-    final d = _unlockDate!;
-    final m = d.minute.toString().padLeft(2, '0');
-    final ampm = d.hour < 12 ? 'AM' : 'PM';
-    final h12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
-    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} @ $h12:$m $ampm';
-  }
-
   Future<void> _choosePhoto() async {
-    final bytes = await pickPhoto(
+    FocusScope.of(context).unfocus();
+    final picked = await pickPhotos(
       context,
       settings: context.read<LocationService>(),
     );
-    if (bytes != null && mounted) setState(() => _photo = bytes);
+    if (picked.isNotEmpty && mounted) setState(() => _photo = picked.first);
   }
 
   Future<void> _record() async {
+    FocusScope.of(context).unfocus();
     final granted = await ensureMicrophoneAccess(
       context,
       hasPermission: _voice.hasPermission,
@@ -133,22 +125,11 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
     }
   }
 
-  void _onVoiceTap() {
-    switch (_voice.status) {
-      case VoiceStatus.idle:
-        _record();
-      case VoiceStatus.recording:
-        _voice.stop();
-      case VoiceStatus.recorded:
-        _voice.discard();
-    }
-  }
-
   String? _problem(String title) {
     if (title.isEmpty) return 'GIVE YOUR CHEST A NAME.';
     if (_trigger != CapsuleTriggerMode.dateRelease) return null;
     final date = _unlockDate;
-    if (date == null) return 'SET AN UNLOCK DATE.';
+    if (date == null) return 'SET A DATE AND TIME.';
     if (!date.isAfter(DateTime.now())) return 'PICK A TIME IN THE FUTURE.';
     return null;
   }
@@ -157,9 +138,11 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
     final title = _titleCtrl.text.trim();
     final problem = _problem(title);
     if (problem != null) {
+      AudioService.instance.playSfx(AppSfx.error);
       setState(() => _formError = problem);
       return;
     }
+    FocusScope.of(context).unfocus();
     final ctrl = context.read<VaultController>();
     setState(() {
       _saving = true;
@@ -178,290 +161,203 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
 
     if (!mounted) return;
     if (error != null) {
+      AudioService.instance.playSfx(AppSfx.error);
       setState(() {
         _saving = false;
         _formError = error;
       });
       return;
     }
+    AudioService.instance
+      ..playSfx(AppSfx.seal)
+      ..knock(strong: true);
     Navigator.of(context).pop(true);
   }
 
   @override
   Widget build(BuildContext context) {
     final isDate = _trigger == CapsuleTriggerMode.dateRelease;
-    final seconds = _voice.elapsed.inSeconds;
+    final date = _unlockDate;
 
     return PixelModalShell(
-      title: 'CRAFT TREASURE\nCHEST',
+      title: 'NEW CHEST',
+      icon: PixelIcons.chest,
+      titleColor: AppColors.yellow,
+      busy: _saving,
+      hasUnsavedWork: _hasUnsavedWork,
+      footer: PixelButton(
+        label: _saving ? 'SEALING' : 'SEAL CHEST',
+        icon: PixelIcons.lock,
+        busy: _saving,
+        onPressed: _save,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Center(
-            child: SpriteAssetIcon(
-              assetPath: 'assets/sprites/mystery_box.svg',
-              fallbackPath: 'assets/sprites/mystery_box_96.png',
-              size: 44,
-              semanticsLabel: 'Mystery box chest',
-            ),
+          if (_formError != null) ...[
+            PixelNote.error(_formError!),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          const PixelLabel('OPENS'),
+          PixelSegments(
+            labels: const ['ON A DATE', 'DUAL TAP'],
+            icons: const [PixelIcons.clock, PixelIcons.hand],
+            selected: isDate ? 0 : 1,
+            onSelected: _saving
+                ? null
+                : (i) => setState(() => _trigger = i == 0
+                    ? CapsuleTriggerMode.dateRelease
+                    : CapsuleTriggerMode.dualTapSync),
           ),
           const SizedBox(height: AppSpacing.md),
-          // Trigger mode tabs
-          Row(
-            children: [
-              Expanded(
-                child: _TriggerTab(
-                  label: '[ DATE\nRELEASE ]',
-                  active: isDate,
-                  onTap: () =>
-                      setState(() => _trigger = CapsuleTriggerMode.dateRelease),
-                ),
-              ),
-              Expanded(
-                child: _TriggerTab(
-                  label: '[ DUAL-TAP\nSYNC ]',
-                  active: !isDate,
-                  onTap: () =>
-                      setState(() => _trigger = CapsuleTriggerMode.dualTapSync),
-                ),
-              ),
-            ],
-          ),
+          if (isDate)
+            PixelValueBox(
+              icon: PixelIcons.calendar,
+              text: date == null
+                  ? 'TAP TO CHOOSE WHEN'
+                  : ZingDateUtils.dateTimeLabel(date),
+              textColor: date == null ? AppColors.faint : AppColors.yellow,
+              hasError: _formError != null && date == null,
+              onTap: _saving ? null : _pickDateTime,
+            )
+          else
+            const PixelNote('Opens once both of you have tapped it.'),
           const SizedBox(height: AppSpacing.lg),
-
-          // Chest name
-          PixelInsetField(
+          PixelField(
             label: 'CHEST NAME',
-            hint: 'OPEN ON YOUR FLIGHT HOME..',
+            hint: 'Open on your flight home',
             controller: _titleCtrl,
             maxLength: 60,
             enabled: !_saving,
+            hasError: _formError != null && _titleCtrl.text.trim().isEmpty,
+            textCapitalization: TextCapitalization.sentences,
+            textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: AppSpacing.md),
-
-          // Date/time picker — only for date-release
-          if (isDate) ...[
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('UNLOCK DATE & TIME', style: AppTextStyles.label),
-                const SizedBox(height: 6),
-                GestureDetector(
-                  onTap: _saving ? null : _pickDateTime,
-                  child: Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: AppColors.charcoal,
-                      border: Border.all(color: Colors.black, width: 2),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black,
-                          offset: Offset(0, 3),
-                          blurRadius: 0,
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.access_time,
-                            size: 12, color: AppColors.cyan),
-                        const SizedBox(width: 8),
-                        Text(
-                          _unlockDateDisplay,
-                          style: AppTextStyles.body.copyWith(
-                            fontSize: 7,
-                            color: _unlockDate != null
-                                ? AppColors.yellow
-                                : const Color(0xFF555577),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-          ],
-
-          // Secret note
-          PixelInsetField(
+          const SizedBox(height: AppSpacing.lg),
+          PixelField(
             label: 'SECRET NOTE',
             hint: 'Read this when your plane takes off...',
             controller: _noteCtrl,
             maxLines: 4,
             maxLength: 500,
             enabled: !_saving,
-          ),
-          const SizedBox(height: AppSpacing.md),
-
-          // Media buttons
-          Text('ATTACH HIDDEN MEDIA', style: AppTextStyles.label),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: _MediaButton(
-                  label: _photo != null
-                      ? '[ ✓ PHOTO ADDED ]\nTAP TO REMOVE'
-                      : '[ + HIDDEN PHOTO ]',
-                  icon: Icons.image,
-                  active: _photo != null,
-                  onTap: _saving
-                      ? null
-                      : (_photo != null
-                          ? () => setState(() => _photo = null)
-                          : _choosePhoto),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: _MediaButton(
-                  label: switch (_voice.status) {
-                    VoiceStatus.idle => '[ RECORD\nVOICE NOTE ]',
-                    VoiceStatus.recording =>
-                      '[ ■ STOP ]\n0:${seconds.toString().padLeft(2, '0')} '
-                          '/ ${VoiceRecorder.maxLength.inSeconds}S',
-                    VoiceStatus.recorded =>
-                      '[ ✓ VOICE ADDED ]\nTAP TO REMOVE',
-                  },
-                  icon: _voice.status == VoiceStatus.recording
-                      ? Icons.stop
-                      : Icons.mic,
-                  active: _voice.status == VoiceStatus.recorded,
-                  onTap: _saving ? null : _onVoiceTap,
-                ),
-              ),
-            ],
+            textCapitalization: TextCapitalization.sentences,
           ),
           const SizedBox(height: AppSpacing.lg),
-
-          // Warning box
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            decoration: BoxDecoration(
-              color: AppColors.charcoal,
-              border: Border.all(color: AppColors.yellow, width: 2),
-            ),
-            child: Text(
-              '/!\\ ONCE LOCKED, THIS CHEST IS SEALED UNTIL THE RELEASE CONDITIONS ARE MET.',
-              style: AppTextStyles.caption.copyWith(
-                color: AppColors.yellow,
-                fontSize: 6,
-                height: 1.7,
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-
-          if (_formError != null) ...[
-            PixelErrorBox(message: _formError!),
-            const SizedBox(height: AppSpacing.md),
-          ],
-
-          PixelButton(
-            label: _saving ? 'SEALING...' : '[ LOCK & SEAL CHEST ]',
-            style: PixelButtonStyle.yellow,
-            onPressed: _saving ? null : _save,
+          const PixelLabel('HIDDEN PHOTO'),
+          _photoBox(),
+          const SizedBox(height: AppSpacing.lg),
+          const PixelLabel('VOICE NOTE'),
+          _voiceBox(),
+          const SizedBox(height: AppSpacing.lg),
+          const PixelNote.warning(
+            "Once sealed, a chest can't be edited, and nobody sees inside "
+            'until it opens.',
           ),
         ],
       ),
     );
   }
-}
 
-class _TriggerTab extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  const _TriggerTab({required this.label, required this.active, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: active ? AppColors.yellow : Colors.transparent,
-          border: Border.all(color: Colors.black, width: 2),
-          boxShadow: active
-              ? const [
-                  BoxShadow(
-                    color: Colors.black,
-                    offset: Offset(2, 2),
-                    blurRadius: 0,
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: AppTextStyles.button.copyWith(
-            fontSize: 7,
-            color: active ? Colors.black : Colors.white,
-            height: 1.6,
+  Widget _photoBox() {
+    final photo = _photo;
+    if (photo == null) {
+      return PixelButton(
+        label: 'ADD A PHOTO',
+        icon: PixelIcons.photo,
+        style: PixelButtonStyle.neutral,
+        small: true,
+        onPressed: _saving ? null : _choosePhoto,
+      );
+    }
+    final item = PhotoItem.bytes(photo);
+    return PixelWell(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => PhotoViewer.open(context, photos: [item]),
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: const PixelOutline(color: AppColors.ink),
+              clipBehavior: Clip.hardEdge,
+              child: PixelPhoto(item),
+            ),
           ),
-        ),
+          const SizedBox(width: AppSpacing.md),
+          const Expanded(
+            child: Text('PHOTO ADDED', style: AppTextStyles.button),
+          ),
+          PixelIconButton(
+            icon: PixelIcons.trash,
+            label: 'Remove photo',
+            tone: PixelTone.danger,
+            onPressed: _saving ? null : () => setState(() => _photo = null),
+          ),
+        ],
       ),
     );
   }
-}
 
-class _MediaButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool active;
-  final VoidCallback? onTap;
-  const _MediaButton({
-    required this.label,
-    required this.icon,
-    required this.active,
-    required this.onTap,
-  });
+  Widget _voiceBox() {
+    final seconds = _voice.elapsed.inSeconds;
+    final clock = '0:${seconds.toString().padLeft(2, '0')}';
 
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: active
-              ? AppColors.cyan.withValues(alpha: 0.1)
-              : AppColors.charcoal,
-          border: Border.all(
-            color: active ? AppColors.cyan : AppColors.cyan,
-            width: 2,
-          ),
-          boxShadow: const [
-            BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
-          ],
+    return switch (_voice.status) {
+      VoiceStatus.idle => PixelButton(
+          label: 'RECORD',
+          icon: PixelIcons.mic,
+          style: PixelButtonStyle.neutral,
+          small: true,
+          onPressed: _saving ? null : _record,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: active ? AppColors.cyan : AppColors.cyan),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.caption.copyWith(
-                fontSize: 6,
-                color: AppColors.cyan,
-                height: 1.5,
+      VoiceStatus.recording => PixelWell(
+          outline: AppColors.coral,
+          padding: const EdgeInsets.all(AppSpacing.sm),
+          child: Row(
+            children: [
+              PixelIconButton(
+                icon: PixelIcons.stop,
+                label: 'Stop recording',
+                tone: PixelTone.coral,
+                onPressed: _voice.stop,
               ),
-            ),
-          ],
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: PixelProgressBar(
+                  value: seconds / VoiceRecorder.maxLength.inSeconds,
+                  tone: PixelTone.coral,
+                  blocks: 12,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Text(
+                clock,
+                style: AppTextStyles.button.copyWith(color: AppColors.coral),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      VoiceStatus.recorded => PixelWell(
+          padding: const EdgeInsets.all(AppSpacing.sm),
+          child: Row(
+            children: [
+              const SizedBox(width: AppSpacing.sm),
+              const PixelIcon(PixelIcons.mic, size: 18, color: AppColors.cyan),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text('VOICE ADDED\n$clock', style: AppTextStyles.button),
+              ),
+              PixelIconButton(
+                icon: PixelIcons.trash,
+                label: 'Remove voice note',
+                tone: PixelTone.danger,
+                onPressed: _saving ? null : _voice.discard,
+              ),
+            ],
+          ),
+        ),
+    };
   }
 }

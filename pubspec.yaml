@@ -71,12 +71,10 @@ flutter:
   assets:
     # Listed one by one, so source files kept in these folders don't ship.
     - assets/audio/591777__bloodpixelhero__atmospheric-loop-25 (1).mp3
+    - assets/audio/sfx/
     - assets/images/zing_logo.svg
-    - assets/sprites/mecha_rabbit.svg
     - assets/sprites/mecha_rabbit_96.png
-    - assets/sprites/monster_guy.svg
     - assets/sprites/monster_guy_96.png
-    - assets/sprites/mystery_box.svg
     - assets/sprites/mystery_box_96.png
     - assets/sprites/pixelArt-0.png
     - assets/sprites/pixelArt-1.svg

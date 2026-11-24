@@ -1,381 +1,298 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/session_controller.dart';
 import '../../../core/models/capsule_model.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
-import '../../../core/widgets/pixel_snack_bar.dart';
-import '../../../core/widgets/sprite_avatar.dart';
+import '../../../core/widgets/pixel_controls.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_loader.dart';
 import '../../../core/widgets/pixel_modal_shell.dart';
+import '../../../core/widgets/pixel_page.dart';
+import '../../../core/widgets/pixel_panel.dart';
+import '../../../core/widgets/pixel_toast.dart';
+import '../../../core/widgets/sprite_avatar.dart';
+import '../../shell/shell_tabs.dart';
 import '../controllers/vault_controller.dart';
 import '../modals/chest_locked_date_modal.dart';
 import '../modals/chest_locked_dualtap_modal.dart';
 import '../modals/chest_unlocked_modal.dart';
 import '../modals/create_capsule_modal.dart';
-import '../widgets/cancel_chest_dialog.dart';
+import '../modals/locked_chest_page.dart';
 import '../widgets/chest_card.dart';
-import '../widgets/vault_filter_bar.dart';
+import '../widgets/vault_filters.dart';
 
-class VaultScreen extends StatelessWidget {
+class VaultScreen extends StatefulWidget {
   const VaultScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final ctrl = context.watch<VaultController>();
-    final capsules = ctrl.capsules;
+  State<VaultScreen> createState() => _VaultScreenState();
+}
 
-    return Scaffold(
-      backgroundColor: AppColors.navy,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.lg,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'TREASURE\nVAULT',
-                    style: AppTextStyles.header.copyWith(
-                      fontSize: 19,
-                      color: AppColors.cyan,
-                      height: 1.5,
-                      shadows: const [
-                        Shadow(
-                          color: Color(0xFF003A44),
-                          offset: Offset(3, 3),
-                          blurRadius: 0,
-                        ),
-                      ],
-                    ),
-                  ),
-                  _NewChestButton(ctrl: ctrl),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
+class _VaultScreenState extends State<VaultScreen> {
+  ShellTabs? _tabs;
 
-              if (ctrl.isLoading)
-                const Expanded(
-                  child: Center(
-                    child: CircularProgressIndicator(color: AppColors.yellow),
-                  ),
-                )
-              else if (ctrl.error != null && capsules.isEmpty)
-                Expanded(
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          ctrl.error!,
-                          textAlign: TextAlign.center,
-                          style: AppTextStyles.caption.copyWith(
-                            color: AppColors.coral,
-                            height: 1.8,
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.lg),
-                        PixelButton(label: '[ RETRY ]', onPressed: ctrl.retry),
-                      ],
-                    ),
-                  ),
-                )
-              else ...[
-                if (ctrl.error != null) ...[
-                  Text(
-                    ctrl.error!,
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.caption.copyWith(
-                      color: AppColors.coral,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                ],
-                VaultFilterBar(
-                  current: ctrl.filter,
-                  sender: ctrl.senderFilter,
-                  status: ctrl.statusFilter,
-                  showArchived: ctrl.showArchived,
-                  totalCount: ctrl.totalCount,
-                  onSelect: ctrl.setFilter,
-                  onSenderSelect: ctrl.setSenderFilter,
-                  onStatusSelect: ctrl.setStatusFilter,
-                  onArchiveSelect: ctrl.setShowArchived,
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                Expanded(
-                  child: capsules.isEmpty
-                      ? (ctrl.isEmpty && !ctrl.showArchived && !ctrl.hasFilters
-                            ? _EmptyVault(ctrl: ctrl)
-                            : Center(
-                                child: Text(
-                                  ctrl.showArchived
-                                      ? 'NO ARCHIVED CHESTS.'
-                                      : 'NO CHESTS IN THIS FILTER.',
-                                  textAlign: TextAlign.center,
-                                  style: AppTextStyles.caption.copyWith(
-                                    color: AppColors.gray,
-                                  ),
-                                ),
-                              ))
-                      : GridView.builder(
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                mainAxisSpacing: 12,
-                                crossAxisSpacing: 12,
-                                childAspectRatio: 0.78,
-                              ),
-                          itemCount: capsules.length,
-                          itemBuilder: (ctx, i) {
-                            final capsule = capsules[i];
-                            return ChestCard(
-                              capsule: capsule,
-                              ctrl: ctrl,
-                              onTap: () => _openChest(context, ctrl, capsule),
-                              onLongPress: () =>
-                                  _longPress(context, ctrl, capsule),
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
+  @override
+  void initState() {
+    super.initState();
+    _tabs = context.read<ShellTabs?>()?..addListener(_onTabs);
+    _onTabs();
+  }
+
+  @override
+  void dispose() {
+    _tabs?.removeListener(_onTabs);
+    super.dispose();
+  }
+
+  /// The home screen's LOCK CHEST button starts here.
+  void _onTabs() {
+    if (!(_tabs?.take(ShellAction.newChest) ?? false)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _newChest();
+    });
+  }
+
+  void _sheet(Widget child, {bool isForm = false}) {
+    final vault = context.read<VaultController>();
+    showPixelSheet<void>(
+      context: context,
+      isForm: isForm,
+      builder: (_) => ChangeNotifierProvider.value(value: vault, child: child),
     );
   }
 
-  // ─────────────────────────────────────────────
-  // Navigation
-  // ─────────────────────────────────────────────
+  void _newChest() => _sheet(const CreateCapsuleModal(), isForm: true);
 
-  void _openChest(
-    BuildContext context,
-    VaultController ctrl,
-    CapsuleModel capsule,
-  ) {
-    if (capsule.status == CapsuleStatus.unlocked) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ChestUnlockedModal(
-            capsule: capsule,
-            loadContent: () => ctrl.loadContent(capsule),
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (capsule.triggerMode == CapsuleTriggerMode.dateRelease) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ChangeNotifierProvider.value(
-            value: ctrl,
-            child: ChestLockedDateModal(capsule: capsule),
-          ),
-        ),
-      );
-      return;
-    }
-
+  void _push(Widget page) {
+    final vault = context.read<VaultController>();
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChangeNotifierProvider.value(
-          value: ctrl,
-          child: ChestLockedDualTapModal(capsule: capsule),
-        ),
+      MaterialPageRoute<void>(
+        builder: (_) => ChangeNotifierProvider.value(value: vault, child: page),
       ),
     );
   }
 
-  /// Long-press: archive/restore, or cancel your own sealed chest. The sheet
-  /// only picks the action; it runs here, on the vault's context, once the
-  /// sheet has closed (the sheet's own context is gone by then).
-  Future<void> _longPress(
-    BuildContext context,
-    VaultController ctrl,
-    CapsuleModel capsule,
-  ) async {
+  void _openChest(CapsuleModel capsule) {
+    final vault = context.read<VaultController>();
+    if (capsule.status == CapsuleStatus.unlocked) {
+      _push(ChestUnlockedModal(
+        capsule: capsule,
+        loadContent: () => vault.loadContent(capsule),
+      ));
+    } else if (capsule.triggerMode == CapsuleTriggerMode.dateRelease) {
+      _push(ChestLockedDateModal(capsule: capsule));
+    } else {
+      _push(ChestLockedDualTapModal(
+        capsule: capsule,
+        session: context.read<SessionController>(),
+      ));
+    }
+  }
+
+  /// Archive or restore, or cancel your own sealed chest. The sheet only picks
+  /// the action; it runs here, once the sheet has closed (the sheet's own
+  /// context is gone by then).
+  Future<void> _showOptions(CapsuleModel capsule) async {
+    final vault = context.read<VaultController>();
     final action = await showPixelSheet<_ChestAction>(
       context: context,
-      builder: (_) => ChangeNotifierProvider.value(
-        value: ctrl,
-        child: _ChestContextSheet(capsule: capsule),
+      builder: (_) => _ChestOptions(
+        capsule: capsule,
+        canCancel: vault.isMyChest(capsule) &&
+            capsule.status == CapsuleStatus.sealed,
       ),
     );
-    if (action == null || !context.mounted) return;
+    if (action == null || !mounted) return;
 
     final String? error;
     switch (action) {
       case _ChestAction.toggleArchive:
-        error = await ctrl.setArchived(capsule, !capsule.isArchived);
+        error = await vault.setArchived(capsule, !capsule.isArchived);
       case _ChestAction.cancel:
-        if (!await showCancelChestDialog(context, capsule.title)) return;
-        error = await ctrl.cancelCapsule(capsule);
+        if (!await confirmCancelChest(context, capsule)) return;
+        error = await vault.cancelCapsule(capsule);
     }
-    if (error != null && context.mounted) {
-      showPixelSnackBar(context, error, color: AppColors.coral);
+    if (!mounted) return;
+    if (error != null) {
+      showPixelToast(context, error, color: AppColors.coral);
+    } else if (action == _ChestAction.toggleArchive) {
+      showPixelToast(
+        context,
+        capsule.isArchived ? 'BACK IN THE VAULT.' : 'MOVED TO THE ARCHIVE.',
+      );
     }
   }
-}
-
-enum _ChestAction { toggleArchive, cancel }
-
-class _NewChestButton extends StatelessWidget {
-  final VaultController ctrl;
-  const _NewChestButton({required this.ctrl});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => showPixelSheet(
-        context: context,
-        builder: (_) => ChangeNotifierProvider.value(
-          value: ctrl,
-          child: const CreateCapsuleModal(),
-        ),
-      ),
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.md,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.yellow,
-          border: Border.all(color: Colors.black, width: 2),
-          boxShadow: const [
-            BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+    final ctrl = context.watch<VaultController>();
+
+    return SafeArea(
+      bottom: false,
+      child: PixelColumn(
+        child: Column(
           children: [
-            const SpriteAssetIcon(
-              assetPath: 'assets/sprites/mystery_box.svg',
-              fallbackPath: 'assets/sprites/mystery_box_96.png',
-              size: 40,
-              semanticsLabel: 'Mystery box chest',
+            PixelScreenTitle(
+              title: 'VAULT',
+              icon: PixelIcons.chest,
+              tone: PixelTone.yellow,
+              trailing: PixelIconButton(
+                icon: PixelIcons.filter,
+                label: 'Filter chests',
+                dot: ctrl.hasFilters,
+                onPressed: () => _sheet(const VaultFilterSheet()),
+              ),
             ),
-            const SizedBox(width: AppSpacing.xs),
-            Text(
-              '+ NEW\nCHEST',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.button.copyWith(fontSize: 9, height: 1.5),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+              child: PixelSegments(
+                labels: const ['CHESTS', 'ARCHIVE'],
+                icons: const [PixelIcons.chest, PixelIcons.archive],
+                selected: ctrl.showArchived ? 1 : 0,
+                onSelected: (i) => ctrl.setShowArchived(i == 1),
+              ),
+            ),
+            Expanded(child: _shelf(ctrl)),
+            PixelActionBar(
+              child: PixelButton(
+                label: 'NEW CHEST',
+                icon: PixelIcons.plus,
+                onPressed: _newChest,
+              ),
             ),
           ],
         ),
       ),
     );
   }
-}
 
-class _EmptyVault extends StatelessWidget {
-  final VaultController ctrl;
-  const _EmptyVault({required this.ctrl});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const SpriteAssetIcon(
-          assetPath: 'assets/sprites/mystery_box.svg',
-          fallbackPath: 'assets/sprites/mystery_box_96.png',
-          size: 64,
-          semanticsLabel: 'Mystery box chest',
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        Text(
-          'NO TREASURES\nYET',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.header.copyWith(
-            color: AppColors.yellow,
-            fontSize: 14,
-            shadows: const [
-              Shadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
-            ],
-          ),
-        ),
+  Widget _shelf(VaultController ctrl) {
+    if (ctrl.isLoading) return const PixelLoading(label: 'OPENING THE VAULT');
+    final chests = ctrl.capsules;
+    final error = ctrl.error;
+    if (error != null && chests.isEmpty) {
+      return _Centered(children: [
+        PixelNote.error(error),
         const SizedBox(height: AppSpacing.md),
-        Text(
-          'Lock away a memory for\nyour partner to discover\nlater.',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.caption.copyWith(
-            color: AppColors.gray,
-            height: 1.8,
-          ),
+        PixelButton(
+          label: 'RETRY',
+          icon: PixelIcons.refresh,
+          onPressed: ctrl.retry,
         ),
-        const SizedBox(height: AppSpacing.xl),
-        SizedBox(
-          width: double.infinity,
-          child: PixelButton(
-            label: '[ + CREATE YOUR\nFIRST CHEST ]',
-            style: PixelButtonStyle.yellow,
-            onPressed: () => showPixelSheet(
-              context: context,
-              builder: (_) => ChangeNotifierProvider.value(
-                value: ctrl,
-                child: const CreateCapsuleModal(),
-              ),
+      ]);
+    }
+    if (chests.isEmpty) return _Centered(children: [_empty(ctrl)]);
+
+    return CustomScrollView(
+      slivers: [
+        if (error != null)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+            sliver: SliverToBoxAdapter(child: PixelNote.warning(error)),
+          ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg, 0, AppSpacing.lg + 4, AppSpacing.lg),
+          sliver: SliverGrid.builder(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 220,
+              mainAxisExtent: ChestCard.height,
+              mainAxisSpacing: 14,
+              crossAxisSpacing: 14,
+            ),
+            itemCount: chests.length,
+            itemBuilder: (_, i) => ChestCard(
+              key: ValueKey(chests[i].capsuleId),
+              capsule: chests[i],
+              ctrl: ctrl,
+              onTap: () => _openChest(chests[i]),
+              onOptions: () => _showOptions(chests[i]),
             ),
           ),
         ),
       ],
     );
   }
+
+  Widget _empty(VaultController ctrl) {
+    const art = SpriteIdle(child: ChestImage(size: 96));
+    if (ctrl.hasFilters && !ctrl.isEmpty) {
+      return PixelEmpty(
+        art: art,
+        title: 'NO MATCHES',
+        message: 'No chest fits these filters.',
+        action: PixelButton(
+          label: 'CLEAR FILTERS',
+          style: PixelButtonStyle.neutral,
+          onPressed: ctrl.clearFilters,
+        ),
+      );
+    }
+    return ctrl.showArchived
+        ? const PixelEmpty(
+            art: art,
+            title: 'ARCHIVE IS EMPTY',
+            message: "Chests you've put away will rest here.",
+          )
+        : const PixelEmpty(
+            art: art,
+            title: 'NO TREASURE YET',
+            message: 'Lock away a note, a photo or your voice for your partner '
+                'to discover later.',
+          );
+  }
 }
 
-class _ChestContextSheet extends StatelessWidget {
+class _Centered extends StatelessWidget {
+  final List<Widget> children;
+  const _Centered({required this.children});
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        ),
+      );
+}
+
+enum _ChestAction { toggleArchive, cancel }
+
+class _ChestOptions extends StatelessWidget {
   final CapsuleModel capsule;
-  const _ChestContextSheet({required this.capsule});
+  final bool canCancel;
+  const _ChestOptions({required this.capsule, required this.canCancel});
 
   @override
   Widget build(BuildContext context) {
-    final ctrl = context.read<VaultController>();
-    final canCancel =
-        ctrl.isMyChest(capsule) && capsule.status == CapsuleStatus.sealed;
-
     return PixelModalShell(
-      title: '"${capsule.title}"',
+      title: capsule.title,
+      icon: PixelIcons.chest,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            capsule.isArchived
-                ? 'ARCHIVED CHEST.'
-                : (canCancel ? 'YOUR OWN SEALED CHEST.' : 'CHEST OPTIONS.'),
-            style: AppTextStyles.caption.copyWith(
-              color: AppColors.gray,
-              fontSize: 8,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
           PixelButton(
-            label: capsule.isArchived
-                ? '[ RESTORE TO VAULT ]'
-                : '[ ARCHIVE CHEST ]',
-            style: PixelButtonStyle.outline,
-            backgroundColor: AppColors.charcoal,
+            label: capsule.isArchived ? 'RESTORE TO VAULT' : 'ARCHIVE',
+            icon: PixelIcons.archive,
+            style: PixelButtonStyle.neutral,
             onPressed: () =>
                 Navigator.of(context).pop(_ChestAction.toggleArchive),
           ),
           if (canCancel) ...[
             const SizedBox(height: AppSpacing.md),
             PixelButton(
-              label: '[ CANCEL CHEST ]',
-              style: PixelButtonStyle.outlineDanger,
-              backgroundColor: AppColors.charcoal,
+              label: 'CANCEL CHEST',
+              icon: PixelIcons.trash,
+              style: PixelButtonStyle.danger,
               onPressed: () => Navigator.of(context).pop(_ChestAction.cancel),
             ),
           ],

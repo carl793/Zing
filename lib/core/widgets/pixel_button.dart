@@ -2,82 +2,216 @@ import 'package:flutter/material.dart';
 
 import '../services/audio_service.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
+import '../theme/pixel_decorations.dart';
+import 'pixel_icon.dart';
+import 'pixel_loader.dart';
+import 'pixel_pressable.dart';
 
-enum PixelButtonStyle { coral, yellow, cyan, outline, outlineDanger }
+/// What a button means, not just its colour.
+enum PixelButtonStyle {
+  /// The main thing to do here.
+  yellow(PixelTone.yellow),
 
+  /// Anything that records love: memories, pairing.
+  coral(PixelTone.coral),
+
+  /// Plans, and anything about the partner.
+  cyan(PixelTone.cyan),
+
+  /// Everything else.
+  neutral(PixelTone.neutral),
+
+  /// Deletes, unlinks, throws away.
+  danger(PixelTone.danger);
+
+  const PixelButtonStyle(this.tone);
+  final PixelTone tone;
+}
+
+/// A key that stands out of the screen and goes down when pressed.
 class PixelButton extends StatelessWidget {
   final String label;
+  final PixelIcons? icon;
   final VoidCallback? onPressed;
   final PixelButtonStyle style;
 
-  /// Optional fill override (e.g. charcoal behind an outline button).
-  final Color? backgroundColor;
+  /// Shows the loader in place of the icon and ignores presses.
+  final bool busy;
+
+  /// A shorter key, for use inside panels.
+  final bool small;
+  final AppSfx sfx;
 
   const PixelButton({
     super.key,
     required this.label,
     required this.onPressed,
-    this.style = PixelButtonStyle.coral,
-    this.backgroundColor,
+    this.icon,
+    this.style = PixelButtonStyle.yellow,
+    this.busy = false,
+    this.small = false,
+    this.sfx = AppSfx.tap,
   });
-
-  bool get _isOutline =>
-      style == PixelButtonStyle.outline ||
-      style == PixelButtonStyle.outlineDanger;
 
   @override
   Widget build(BuildContext context) {
-    final bool disabled = onPressed == null;
-    final Color accent = style == PixelButtonStyle.outlineDanger
-        ? AppColors.coral
-        : AppColors.cyan;
+    final enabled = onPressed != null && !busy;
+    final tone = enabled || busy ? style.tone : PixelTone.disabled;
 
-    final Color fill = disabled
-        ? const Color(0xFF555555)
-        : backgroundColor ??
-              switch (style) {
-                PixelButtonStyle.coral => AppColors.coral,
-                PixelButtonStyle.yellow => AppColors.yellow,
-                PixelButtonStyle.cyan => AppColors.cyan,
-                PixelButtonStyle.outline ||
-                PixelButtonStyle.outlineDanger => Colors.transparent,
-              };
-
-    final Color textColor = disabled
-        ? const Color(0xFF888888)
-        : (_isOutline ? accent : Colors.black);
-
-    final Color borderColor = _isOutline ? accent : Colors.black;
-
-    return GestureDetector(
-      onTap: onPressed == null
-          ? null
-          : () {
-              AudioService.instance.playSfx(AppSfx.tap);
-              onPressed!();
-            },
-      child: Container(
+    return PixelPressable(
+      onPressed: enabled ? onPressed : null,
+      sfx: sfx,
+      builder: (context, pressed) => Container(
         width: double.infinity,
-        decoration: BoxDecoration(
-          color: fill,
-          border: Border.all(color: borderColor, width: 2),
-          boxShadow: disabled
-              ? []
-              : [
-                  BoxShadow(
-                    color: _isOutline ? accent.withValues(alpha: 0.4) : Colors.black,
-                    offset: const Offset(4, 4),
-                    blurRadius: 0,
-                  ),
-                ],
+        constraints: BoxConstraints(minHeight: small ? 44 : 52),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.sm,
         ),
-        padding: const EdgeInsets.symmetric(vertical: 19, horizontal: 12),
+        decoration: PixelRaised(tone: tone, pressed: pressed || busy),
+        child: Center(
+          heightFactor: 1,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (busy) ...[
+                  PixelLoader(size: 4, color: tone.text),
+                  const SizedBox(width: AppSpacing.sm),
+                ] else if (icon != null) ...[
+                  PixelIcon(icon!, color: tone.text),
+                  const SizedBox(width: AppSpacing.sm),
+                ],
+                Text(
+                  label,
+                  style: AppTextStyles.button.copyWith(color: tone.text),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A square key holding only an icon.
+class PixelIconButton extends StatelessWidget {
+  final PixelIcons icon;
+
+  /// Read aloud, since there is no text.
+  final String label;
+  final VoidCallback? onPressed;
+  final PixelTone tone;
+  final double size;
+  final AppSfx sfx;
+
+  /// A dot in the corner: something here needs attention.
+  final bool dot;
+
+  const PixelIconButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.tone = PixelTone.neutral,
+    this.size = 44,
+    this.sfx = AppSfx.tap,
+    this.dot = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = onPressed == null ? PixelTone.disabled : tone;
+    final small = size < 40;
+    final key = PixelPressable(
+      onPressed: onPressed,
+      semanticLabel: label,
+      sfx: sfx,
+      builder: (context, pressed) => Container(
+        width: size,
+        height: size,
         alignment: Alignment.center,
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: AppTextStyles.button.copyWith(color: textColor),
+        decoration: PixelRaised(
+          tone: shown,
+          pressed: pressed,
+          depth: small ? 3 : 4,
+          shadow: 2,
+        ),
+        child: PixelIcon(icon, color: shown.text, size: small ? 12 : 18),
+      ),
+    );
+    if (!dot) return key;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        key,
+        const Positioned(top: -3, right: -3, child: PixelDot()),
+      ],
+    );
+  }
+}
+
+/// A small square marker for something new.
+class PixelDot extends StatelessWidget {
+  final Color color;
+  const PixelDot({super.key, this.color = AppColors.coral});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 12,
+        height: 12,
+        decoration: PixelOutline(color: AppColors.ink, fill: color),
+      );
+}
+
+/// Words that can be pressed, for the quieter choices on a screen.
+class PixelLink extends StatelessWidget {
+  final String label;
+  final PixelIcons? icon;
+  final VoidCallback? onPressed;
+  final Color color;
+
+  const PixelLink({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.color = AppColors.cyan,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = onPressed == null ? AppColors.faint : color;
+    return PixelPressable(
+      onPressed: onPressed,
+      sfx: AppSfx.tick,
+      builder: (context, pressed) => Container(
+        constraints: const BoxConstraints(minHeight: 40),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+        transform: Matrix4.translationValues(0, pressed ? 2 : 0, 0),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              PixelIcon(icon!, color: shown),
+              const SizedBox(width: 6),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                style: AppTextStyles.label.copyWith(
+                  color: shown,
+                  decoration: TextDecoration.underline,
+                  decorationColor: shown.withValues(alpha: 0.5),
+                  decorationThickness: 2,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

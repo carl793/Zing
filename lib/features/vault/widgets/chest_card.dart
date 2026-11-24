@@ -4,163 +4,191 @@ import '../../../core/models/capsule_model.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../core/widgets/pixel_dashed_border.dart';
+import '../../../core/theme/pixel_decorations.dart';
+import '../../../core/utils/date_utils.dart';
+import '../../../core/widgets/pixel_controls.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_pressable.dart';
 import '../../../core/widgets/sprite_avatar.dart';
 import '../controllers/vault_controller.dart';
+
+/// How a chest stands right now, in a couple of words.
+class ChestStatus {
+  final String label;
+  final Color color;
+  final PixelIcons icon;
+  const ChestStatus(this.label, this.color, this.icon);
+
+  factory ChestStatus.of(CapsuleModel chest, VaultController vault) {
+    if (chest.status == CapsuleStatus.unlocked) {
+      return const ChestStatus('OPEN', AppColors.yellow, PixelIcons.unlock);
+    }
+    final date = chest.unlockDate;
+    if (chest.triggerMode == CapsuleTriggerMode.dateRelease && date != null) {
+      return ChestStatus(
+        'IN ${ZingDateUtils.timeLeft(date)}',
+        AppColors.gray,
+        PixelIcons.clock,
+      );
+    }
+    if (chest.triggerMode == CapsuleTriggerMode.dualTapSync) {
+      return vault.myTapDone(chest)
+          ? ChestStatus(
+              "${vault.partnerName}'S TAP",
+              AppColors.amber,
+              PixelIcons.hand,
+            )
+          : const ChestStatus('YOUR TAP', AppColors.coral, PixelIcons.hand);
+    }
+    return const ChestStatus('SEALED', AppColors.gray, PixelIcons.lock);
+  }
+}
 
 class ChestCard extends StatelessWidget {
   final CapsuleModel capsule;
   final VaultController ctrl;
   final VoidCallback onTap;
-  final VoidCallback? onLongPress;
+  final VoidCallback onOptions;
 
   const ChestCard({
     super.key,
     required this.capsule,
     required this.ctrl,
     required this.onTap,
-    this.onLongPress,
+    required this.onOptions,
   });
+
+  static const double height = 218;
 
   @override
   Widget build(BuildContext context) {
-    final isUnlocked = capsule.status == CapsuleStatus.unlocked;
-    final isMine = ctrl.isMyChest(capsule);
+    final open = capsule.status == CapsuleStatus.unlocked;
+    final status = ChestStatus.of(capsule, ctrl);
+    final mine = ctrl.isMyChest(capsule);
+    const image = ChestImage(size: 72);
 
-    final cardBody = Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.purple,
-        border: Border.all(color: Colors.black, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
-        ],
+    final card = PixelPressable(
+      onPressed: onTap,
+      onLongPress: onOptions,
+      builder: (_, pressed) => Container(
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        decoration: PixelRaised(
+          pressed: pressed,
+          outline: open ? AppColors.yellow : AppColors.ink,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    mine ? 'FROM YOU' : 'FROM ${ctrl.partnerName}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.label.copyWith(
+                      color: mine ? AppColors.coral : AppColors.cyan,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 24, height: 32),
+              ],
+            ),
+            Expanded(
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: SizedBox(
+                    width: 92,
+                    height: 76,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        open
+                            ? const SpriteIdle(canHop: false, child: image)
+                            : image,
+                        if (open) ...[
+                          const Positioned(
+                            left: 0,
+                            top: 0,
+                            child: PixelIcon(PixelIcons.sparkle,
+                                size: 18, color: AppColors.yellow),
+                          ),
+                          const Positioned(
+                            right: 0,
+                            bottom: 8,
+                            child: PixelIcon(PixelIcons.sparkle,
+                                size: 18, color: AppColors.coral),
+                          ),
+                        ] else
+                          const Positioned(
+                            right: 4,
+                            bottom: 4,
+                            child: PixelIcon(
+                              PixelIcons.lock,
+                              size: 24,
+                              color: AppColors.yellow,
+                              shadow: true,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              height: 30,
+              child: Center(
+                child: Text(
+                  capsule.title,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textScaler: TextScaler.noScaling,
+                  style: AppTextStyles.button,
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Center(
+              child: PixelTag(
+                status.label,
+                icon: status.icon,
+                color: status.color,
+                solid: status.color != AppColors.gray,
+              ),
+            ),
+          ],
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Attribution label
-          Align(
-            alignment: Alignment.topLeft,
-            child: Text(
-              '${ctrl.creatorLabel(capsule)} ▸ ${ctrl.recipientLabel(capsule)}',
-              style: AppTextStyles.caption.copyWith(
-                fontSize: 7,
-                color: isMine ? AppColors.coral : AppColors.cyan,
+    );
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        card,
+        Positioned(
+          top: 2,
+          right: 2,
+          child: PixelPressable(
+            onPressed: onOptions,
+            semanticLabel: 'Chest options',
+            builder: (_, down) => SizedBox(
+              width: 44,
+              height: 44,
+              child: Align(
+                alignment: const Alignment(0.4, -0.1),
+                child: PixelIcon(
+                  PixelIcons.more,
+                  color: down ? AppColors.yellow : AppColors.gray,
+                ),
               ),
             ),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          // Chest icon
-          const SpriteAssetIcon(
-            assetPath: 'assets/sprites/mystery_box.svg',
-            fallbackPath: 'assets/sprites/mystery_box_96.png',
-            size: 60,
-            semanticsLabel: 'Mystery box chest',
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          // Title
-          Text(
-            capsule.title,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.body.copyWith(fontSize: 9, height: 1.5),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          // Status badge
-          _StatusBadge(capsule: capsule, ctrl: ctrl),
-        ],
-      ),
-    );
-
-    final wrapped = isUnlocked
-        ? PixelDashedBorder(
-            color: AppColors.yellow,
-            strokeWidth: 2.5,
-            dashLength: 5,
-            gapLength: 3,
-            child: cardBody,
-          )
-        : cardBody;
-
-    return GestureDetector(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: wrapped,
-    );
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final CapsuleModel capsule;
-  final VaultController ctrl;
-  const _StatusBadge({required this.capsule, required this.ctrl});
-
-  @override
-  Widget build(BuildContext context) {
-    final isUnlocked = capsule.status == CapsuleStatus.unlocked;
-
-    if (isUnlocked) {
-      return _badge('UNLOCKED - TAP', AppColors.yellow, Colors.black);
-    }
-
-    if (capsule.triggerMode == CapsuleTriggerMode.dateRelease &&
-        capsule.unlockDate != null) {
-      final d = capsule.unlockDate!;
-      final months = [
-        '',
-        'JAN',
-        'FEB',
-        'MAR',
-        'APR',
-        'MAY',
-        'JUN',
-        'JUL',
-        'AUG',
-        'SEP',
-        'OCT',
-        'NOV',
-        'DEC',
-      ];
-      return _badge(
-        'UNLOCKS ${months[d.month]} ${d.day.toString().padLeft(2, '0')}',
-        AppColors.coral,
-        Colors.black,
-      );
-    }
-
-    if (capsule.triggerMode == CapsuleTriggerMode.dualTapSync) {
-      final myDone = ctrl.myTapDone(capsule);
-      final partnerDone = ctrl.partnerTapDone(capsule);
-      if (!myDone) {
-        return _badge('WAITING FOR ME', AppColors.coral, Colors.black);
-      }
-      if (!partnerDone) {
-        return _badge(
-          'WAITING FOR ${ctrl.partnerName}',
-          AppColors.amber,
-          Colors.black,
-        );
-      }
-    }
-
-    return _badge('SEALED', AppColors.gray, Colors.white);
-  }
-
-  Widget _badge(String label, Color bg, Color textColor) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        border: Border.all(color: Colors.black, width: 1),
-      ),
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: AppTextStyles.caption.copyWith(fontSize: 7, color: textColor),
-      ),
+        ),
+      ],
     );
   }
 }

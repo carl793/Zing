@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../core/router/app_router.dart';
@@ -43,6 +44,14 @@ class ZingApp extends StatelessWidget {
         title: 'Zing',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark,
+        builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+          value: AppTheme.systemBars,
+          // Large text is respected up to what the pixel font has room for.
+          child: MediaQuery.withClampedTextScaling(
+            maxScaleFactor: 1.25,
+            child: child!,
+          ),
+        ),
         initialRoute: AppRoutes.launch,
         onGenerateRoute: AppRouter.generateRoute,
       ),

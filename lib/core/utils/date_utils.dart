@@ -48,6 +48,10 @@ class ZingDateUtils {
 
   static String monthAbbr(int month) => _monthAbbreviations[month - 1];
 
+  /// "WED"
+  static String weekday(DateTime day) =>
+      const ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'][day.weekday - 1];
+
   /// "2026-09-16"
   static String isoDate(DateTime date) {
     final d = date.toUtc();
@@ -64,6 +68,27 @@ class ZingDateUtils {
   static String monthYearLabel(DateTime date) {
     final d = date.toUtc();
     return '${monthName(d.month)} ${d.year}';
+  }
+
+  /// "SEP 16, 2026 AT 3:05 PM", on this phone's clock.
+  static String dateTimeLabel(DateTime local) =>
+      '${shortLabel(fromLocal(local))} AT ${timeLabel(local)}';
+
+  /// "3:05 PM"
+  static String timeLabel(DateTime local) {
+    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    return '$hour:${_two(local.minute)} ${local.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  /// How long until [moment], in its largest unit or two: "12 DAYS",
+  /// "5H 20M", "UNDER 1 MIN".
+  static String timeLeft(DateTime moment, {DateTime? now}) {
+    final left = moment.difference(now ?? DateTime.now());
+    if (left.inDays >= 2) return '${left.inDays} DAYS';
+    if (left.inHours >= 24) return '1 DAY ${left.inHours - 24}H';
+    if (left.inHours >= 1) return '${left.inHours}H ${left.inMinutes % 60}M';
+    if (left.inMinutes >= 1) return '${left.inMinutes} MIN';
+    return 'UNDER 1 MIN';
   }
 
   static int daysBetween(DateTime from, DateTime to) =>

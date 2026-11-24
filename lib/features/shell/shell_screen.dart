@@ -6,8 +6,10 @@ import '../../core/router/app_router.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/storage_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/pixel_icon.dart';
 import '../../core/widgets/pixel_nav_bar.dart';
-import '../../core/widgets/pixel_snack_bar.dart';
+import '../../core/widgets/pixel_page.dart';
+import '../../core/widgets/pixel_toast.dart';
 import '../../data/repositories/capsule_repository.dart';
 import '../../data/repositories/couple_repository.dart';
 import '../../data/repositories/user_repository.dart';
@@ -89,7 +91,7 @@ class _ShellViewState extends State<_ShellView> {
     if (end == null || _leaving || !mounted) return;
     _leaving = true;
     if (end == SessionEnd.unlinkedByPartner) {
-      showPixelSnackBar(
+      showPixelToast(
         context,
         'YOUR PARTNER UNLINKED THE ROOM.',
         color: AppColors.coral,
@@ -102,26 +104,40 @@ class _ShellViewState extends State<_ShellView> {
   @override
   Widget build(BuildContext context) {
     final tabs = context.watch<ShellTabs>();
+    final chestWaiting =
+        context.select<VaultController, bool>((v) => v.needsMyTap);
     _opened.add(tabs.value);
 
     return PopScope(
-      // Back returns to the dashboard first, then leaves the app.
-      canPop: tabs.value == ShellTab.overworld,
+      // Back returns to the first tab, then leaves the app.
+      canPop: tabs.value == ShellTab.home,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) tabs.open(ShellTab.overworld);
+        if (!didPop) tabs.open(ShellTab.home);
       },
       child: Scaffold(
-        backgroundColor: AppColors.navy,
-        body: IndexedStack(
-          index: tabs.value.index,
-          children: [
-            for (final tab in ShellTab.values)
-              _opened.contains(tab)
-                  ? _screens[tab.index]
-                  : const SizedBox.shrink(),
-          ],
+        backgroundColor: AppColors.night,
+        body: PixelBackdrop(
+          child: IndexedStack(
+            index: tabs.value.index,
+            children: [
+              for (final tab in ShellTab.values)
+                // Tabs out of sight stay loaded, but stop moving.
+                TickerMode(
+                  enabled: tab == tabs.value,
+                  child: _opened.contains(tab)
+                      ? _screens[tab.index]
+                      : const SizedBox.shrink(),
+                ),
+            ],
+          ),
         ),
         bottomNavigationBar: PixelNavBar(
+          items: [
+            const PixelNavItem(PixelIcons.home, 'HOME'),
+            const PixelNavItem(PixelIcons.calendar, 'CALENDAR'),
+            PixelNavItem(PixelIcons.chest, 'VAULT', dot: chestWaiting),
+            const PixelNavItem(PixelIcons.gear, 'CONFIG'),
+          ],
           currentIndex: tabs.value.index,
           onTap: (i) => tabs.open(ShellTab.values[i]),
         ),

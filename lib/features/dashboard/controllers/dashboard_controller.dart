@@ -148,6 +148,14 @@ class DashboardController extends SafeNotifier {
     }
   }
 
+  /// How many days the couple has been linked, counting the first.
+  int? get daysLinked {
+    final linkedAt = couple?.linkedAt;
+    return linkedAt == null
+        ? null
+        : DateTime.now().difference(linkedAt).inDays + 1;
+  }
+
   // ── Distance ───────────────────────────────────────────────────────────
 
   static bool _isLive(UserModel? user) {
@@ -207,9 +215,13 @@ class DashboardController extends SafeNotifier {
   // ── Reunion quest ──────────────────────────────────────────────────────
 
   Timer? _questTimer;
-  String questCountdown = _zeroCountdown;
+
+  /// Zero once the day has come.
+  Duration questRemaining = Duration.zero;
   double questProgress = 0;
-  static const _zeroCountdown = '0D:00H:00M';
+
+  bool get questIsDue =>
+      questState == QuestState.accepted && questRemaining == Duration.zero;
 
   QuestState get questState => switch (couple?.reunionQuest.status) {
         ReunionQuestStatus.pending => QuestState.pending,
@@ -230,13 +242,11 @@ class DashboardController extends SafeNotifier {
 
     final remaining = target.difference(DateTime.now());
     if (remaining <= Duration.zero) {
-      questCountdown = _zeroCountdown;
+      questRemaining = Duration.zero;
       questProgress = 1;
       return;
     }
-    String two(int n) => n.toString().padLeft(2, '0');
-    questCountdown = '${remaining.inDays}D:${two(remaining.inHours % 24)}H:'
-        '${two(remaining.inMinutes % 60)}M';
+    questRemaining = remaining;
 
     // Progress runs from acceptance; quests accepted before that was recorded
     // fall back to the day the couple linked.

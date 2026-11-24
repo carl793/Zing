@@ -192,6 +192,13 @@ class VaultController extends SafeNotifier {
     notifyListeners();
   }
 
+  void clearFilters() {
+    filter = VaultFilter.all;
+    senderFilter = VaultSenderFilter.all;
+    statusFilter = VaultStatusFilter.all;
+    notifyListeners();
+  }
+
   void setShowArchived(bool value) {
     showArchived = value;
     notifyListeners();
@@ -335,6 +342,35 @@ class VaultController extends SafeNotifier {
 
   String recipientLabel(CapsuleModel capsule) =>
       isMyChest(capsule) ? partnerName : 'YOU';
+
+  /// A dual-tap chest is waiting for this player.
+  bool get needsMyTap => _all.any((c) => isWaitingForMe(c));
+
+  bool isWaitingForMe(CapsuleModel capsule) =>
+      capsule.status == CapsuleStatus.sealed &&
+      !capsule.isArchived &&
+      capsule.triggerMode == CapsuleTriggerMode.dualTapSync &&
+      !myTapDone(capsule);
+
+  /// The date chest that opens next.
+  CapsuleModel? get nextToOpen {
+    CapsuleModel? next;
+    for (final chest in _all) {
+      final date = chest.unlockDate;
+      if (date == null ||
+          chest.isArchived ||
+          chest.status != CapsuleStatus.sealed ||
+          chest.triggerMode != CapsuleTriggerMode.dateRelease) {
+        continue;
+      }
+      if (next == null || date.isBefore(next.unlockDate!)) next = chest;
+    }
+    return next;
+  }
+
+  /// The chest this player can do something about, or that comes next.
+  CapsuleModel? get highlight =>
+      _all.where(isWaitingForMe).firstOrNull ?? nextToOpen;
 
   bool myTapDone(CapsuleModel capsule) =>
       _tapOf(capsule, playerOne: isPlayerOne) != null;

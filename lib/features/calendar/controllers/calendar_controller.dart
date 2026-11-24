@@ -166,6 +166,18 @@ class CalendarController extends SafeNotifier {
         const [];
   }
 
+  /// Everything in the displayed month, latest day first.
+  List<MemoryModel> get monthEntries {
+    final month = ZingDateUtils.isoDate(displayedMonth).substring(0, 7);
+    final days = _yearByDay.keys.where((day) => day.startsWith(month)).toList()
+      ..sort((a, b) => b.compareTo(a));
+    return [for (final day in days) ..._yearByDay[day]!];
+  }
+
+  bool get isCurrentMonth => displayedMonth == _currentMonth();
+
+  void goToToday() => _setMonth(_currentMonth());
+
   List<MemoryModel> memoriesOn(DateTime date) => entriesFor(date)
       .where((e) => e.entryType == MemoryEntryType.memory)
       .toList();
@@ -203,14 +215,6 @@ class CalendarController extends SafeNotifier {
       return date.isBefore(today) ? DayVisual.unloggedPlan : DayVisual.planned;
     }
     return date == today ? DayVisual.today : DayVisual.normal;
-  }
-
-  /// Tag shown under the day number on memory tiles.
-  String? cellLabel(DateTime date) {
-    final memories = memoriesOn(date);
-    if (memories.isEmpty) return null;
-    final tag = memories.first.tagCategory;
-    return tag.isEmpty ? null : tag;
   }
 
   int get daysTogetherThisMonth {

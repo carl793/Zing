@@ -1,21 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/session_controller.dart';
 import '../../../core/models/capsule_model.dart';
+import '../../../core/models/user_model.dart';
+import '../../../core/services/audio_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/theme/pixel_decorations.dart';
 import '../../../core/widgets/pixel_button.dart';
-import '../../../core/widgets/pixel_error_box.dart';
-import '../../../core/widgets/pixel_snack_bar.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_panel.dart';
 import '../../../core/widgets/sprite_avatar.dart';
 import '../controllers/vault_controller.dart';
-import '../widgets/cancel_chest_dialog.dart';
-import '../widgets/chest_unlocked_notice.dart';
+import 'locked_chest_page.dart';
 
 class ChestLockedDualTapModal extends StatefulWidget {
   final CapsuleModel capsule;
-  const ChestLockedDualTapModal({super.key, required this.capsule});
+
+  /// Both players' sprites.
+  final SessionController? session;
+  const ChestLockedDualTapModal({
+    super.key,
+    required this.capsule,
+    this.session,
+  });
 
   @override
   State<ChestLockedDualTapModal> createState() =>
@@ -26,274 +36,123 @@ class _ChestLockedDualTapModalState extends State<ChestLockedDualTapModal> {
   bool _tapping = false;
   String? _error;
 
-  @override
-  Widget build(BuildContext context) {
-    final ctrl = context.watch<VaultController>();
-    // Read the live chest, not the copy this screen was opened with, so
-    // both partners' taps (and the unlock) appear while it's open.
-    final capsule =
-        ctrl.capsuleById(widget.capsule.capsuleId) ?? widget.capsule;
-    if (capsule.status == CapsuleStatus.unlocked) {
-      return ChestUnlockedNotice(capsule: capsule);
-    }
-    final myDone = ctrl.myTapDone(capsule);
-    final partnerDone = ctrl.partnerTapDone(capsule);
-    final isMine = ctrl.isMyChest(capsule);
-
-    return Scaffold(
-      backgroundColor: AppColors.navy,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'CHEST SEALED',
-                    style: AppTextStyles.header.copyWith(
-                      color: AppColors.coral,
-                      fontSize: 18,
-                      shadows: const [
-                        Shadow(
-                          color: Colors.black,
-                          offset: Offset(3, 3),
-                          blurRadius: 0,
-                        ),
-                      ],
-                    ),
-                  ),
-                  _CloseBtn(),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              Text(
-                '"${capsule.title}"',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.body.copyWith(
-                  color: AppColors.cyan,
-                  fontSize: 10,
-                  height: 1.6,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xl),
-
-              const Center(
-                child: SpriteAssetIcon(
-                  assetPath: 'assets/sprites/mystery_box.svg',
-                  fallbackPath: 'assets/sprites/mystery_box_96.png',
-                  size: 84,
-                  semanticsLabel: 'Mystery box chest',
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              Text(
-                'LOCKED',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.body.copyWith(
-                  color: AppColors.yellow,
-                  fontSize: 11,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              Text(
-                'DUAL-TAP SYNC STATUS',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.label.copyWith(color: AppColors.cyan),
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: _TapChip(
-                      label: 'P1: YOU',
-                      status: myDone ? 'TAPPED ✓' : 'WAITING...',
-                      done: myDone,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: _TapChip(
-                      label: 'P2: ${ctrl.partnerName}',
-                      status: partnerDone ? 'TAPPED ✓' : 'WAITING...',
-                      done: partnerDone,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              if (_error != null) ...[
-                PixelErrorBox(message: _error!),
-                const SizedBox(height: AppSpacing.md),
-              ],
-
-              PixelButton(
-                label: _tapping
-                    ? 'TAPPING...'
-                    : (myDone
-                          ? '[ WAITING FOR PARTNER ]'
-                          : '[ TAP TO UNLOCK ]'),
-                style: PixelButtonStyle.yellow,
-                onPressed: (myDone || _tapping)
-                    ? null
-                    : () => _tap(ctrl, capsule),
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              Text(
-                'Both partners must tap to unlock this chest. Your tap is '
-                'saved until your partner taps too.',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.caption.copyWith(
-                  color: AppColors.gray,
-                  fontSize: 6,
-                  height: 1.8,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xl),
-
-              // Cancel only for creator
-              if (isMine) ...[
-                GestureDetector(
-                  onTap: () => _cancel(ctrl, capsule),
-                  child: Center(
-                    child: Text(
-                      '[ CANCEL CHEST ]',
-                      style: AppTextStyles.caption.copyWith(
-                        color: AppColors.coral,
-                        fontSize: 6,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.md),
-              ],
-
-              PixelButton(
-                label: '[ CLOSE ]',
-                style: PixelButtonStyle.outline,
-                backgroundColor: AppColors.charcoal,
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _tap(VaultController ctrl, CapsuleModel capsule) async {
+  Future<void> _tap(CapsuleModel chest) async {
+    final vault = context.read<VaultController>();
     setState(() {
       _tapping = true;
       _error = null;
     });
-    final error = await ctrl.tapUnlock(capsule);
+    final error = await vault.tapUnlock(chest);
     if (!mounted) return;
+    AudioService.instance.playSfx(error == null ? AppSfx.save : AppSfx.error);
     setState(() {
       _tapping = false;
       _error = error;
     });
   }
 
-  Future<void> _cancel(VaultController ctrl, CapsuleModel capsule) async {
-    if (!await showCancelChestDialog(context, capsule.title)) return;
-    final error = await ctrl.cancelCapsule(capsule);
-    if (!mounted) return;
-    if (error == null) {
-      Navigator.of(context).pop();
-    } else {
-      showPixelSnackBar(context, error, color: AppColors.coral);
-    }
+  @override
+  Widget build(BuildContext context) {
+    return LockedChestPage(
+      capsule: widget.capsule,
+      actions: (vault, chest) {
+        final done = vault.myTapDone(chest);
+        return PixelButton(
+          label: _tapping
+              ? 'TAPPING'
+              : done
+                  ? 'YOU TAPPED'
+                  : 'TAP TO UNLOCK',
+          icon: done ? PixelIcons.check : PixelIcons.hand,
+          busy: _tapping,
+          sfx: AppSfx.seal,
+          onPressed: done ? null : () => _tap(chest),
+        );
+      },
+      body: (context, vault, chest) => [
+        if (_error != null) ...[
+          PixelNote.error(_error!),
+          const SizedBox(height: AppSpacing.lg),
+        ],
+        PixelPanel(
+          title: 'BOTH MUST TAP',
+          icon: PixelIcons.hand,
+          child: Row(
+            children: [
+              Expanded(
+                child: _Tapper(
+                  user: widget.session?.me,
+                  label: 'YOU',
+                  tone: PixelTone.coral,
+                  done: vault.myTapDone(chest),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: _Tapper(
+                  user: widget.session?.partner,
+                  label: vault.partnerName,
+                  tone: PixelTone.cyan,
+                  done: vault.partnerTapDone(chest),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        const PixelNote(
+          "You don't have to tap at the same moment. Your tap waits for your "
+          "partner's.",
+        ),
+      ],
+    );
   }
 }
 
-class _TapChip extends StatelessWidget {
+class _Tapper extends StatelessWidget {
+  final UserModel? user;
   final String label;
-  final String status;
+  final PixelTone tone;
   final bool done;
-  const _TapChip({
+
+  const _Tapper({
+    required this.user,
     required this.label,
-    required this.status,
+    required this.tone,
     required this.done,
   });
 
   @override
   Widget build(BuildContext context) {
+    final sprite = user?.avatarSpriteId ?? '';
+    final avatar = SizedBox.square(
+      dimension: 64,
+      child: sprite.isEmpty ? null : SpriteAvatar(spriteId: sprite, size: 64),
+    );
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.md,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.charcoal,
-        border: Border.all(
-          color: done ? AppColors.cyan : AppColors.gray,
-          width: 2,
-        ),
-        boxShadow: done
-            ? const [
-                BoxShadow(
-                  color: Colors.black,
-                  offset: Offset(2, 2),
-                  blurRadius: 0,
-                ),
-              ]
-            : null,
-      ),
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: PixelInset(outline: done ? tone.face : AppColors.ink),
       child: Column(
         children: [
+          Opacity(
+            opacity: done ? 1 : 0.45,
+            child: done ? SpriteIdle(child: avatar) : avatar,
+          ),
+          const SizedBox(height: AppSpacing.sm),
           Text(
             label,
-            textAlign: TextAlign.center,
-            style: AppTextStyles.caption.copyWith(
-              color: done ? AppColors.cyan : AppColors.gray,
-              fontSize: 7,
-            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.button.copyWith(color: tone.face),
           ),
           const SizedBox(height: 4),
           Text(
-            status,
-            textAlign: TextAlign.center,
+            done ? 'READY!' : 'WAITING',
             style: AppTextStyles.caption.copyWith(
-              color: done ? AppColors.cyan : AppColors.gray,
-              fontSize: 6,
+              color: done ? AppColors.yellow : AppColors.gray,
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _CloseBtn extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.of(context).pop(),
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        decoration: BoxDecoration(
-          color: AppColors.charcoal,
-          border: Border.all(color: AppColors.coral, width: 2),
-          boxShadow: const [
-            BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
-          ],
-        ),
-        child: Text(
-          '[ X ]',
-          style: AppTextStyles.caption.copyWith(
-            color: AppColors.coral,
-            fontSize: 8,
-          ),
-        ),
       ),
     );
   }

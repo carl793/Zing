@@ -4,14 +4,12 @@ class SpriteOption {
   final String label;
   final String? assetPath;
   final String emojiFallback;
-  final String? pngFallbackPath;
 
   const SpriteOption({
     required this.id,
     required this.label,
     this.assetPath,
     required this.emojiFallback,
-    this.pngFallbackPath,
   });
 }
 
@@ -22,15 +20,13 @@ class SpriteOptions {
     SpriteOption(
       id: 'mecha_rabbit',
       label: 'MECHA BUNNY',
-      assetPath: 'assets/sprites/mecha_rabbit.svg',
-      pngFallbackPath: 'assets/sprites/mecha_rabbit_96.png',
+      assetPath: 'assets/sprites/mecha_rabbit_96.png',
       emojiFallback: '\u{1F407}',
     ),
     SpriteOption(
       id: 'monster_guy',
       label: 'MONSTER GUY',
-      assetPath: 'assets/sprites/monster_guy.svg',
-      pngFallbackPath: 'assets/sprites/monster_guy_96.png',
+      assetPath: 'assets/sprites/monster_guy_96.png',
       emojiFallback: '\u{1F47E}',
     ),
   ];
@@ -95,26 +91,6 @@ class SpriteOptions {
   /// Choices shown in the compact sprite picker; legacy emojis remain hidden.
   static const List<SpriteOption> selectable = [...primary, ...added];
   static const List<SpriteOption> allOptions = [...selectable, ...emoji];
-  static const List<String> all = [
-    'mecha_rabbit',
-    'monster_guy',
-    'pixel_art_12',
-    'pixel_art_1',
-    'pixel_art_15',
-    'pixel_art_2',
-    'pixel_art_4',
-    'pixel_art_0',
-    '\u{1F407}',
-    '\u{1F47B}',
-    '\u{1F47E}',
-    '\u{1F98A}',
-    '\u{1F40D}',
-    '\u{1F984}',
-    '\u{1F422}',
-    '\u{1F31E}',
-    '\u{1F319}',
-    '\u{1F321}\u{FE0F}',
-  ];
   static const String fallback = 'mecha_rabbit';
 
   static SpriteOption resolve(String? id) {

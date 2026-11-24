@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_text_styles.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../core/widgets/pixel_button.dart';
-import '../../../core/widgets/onboarding_progress_bar.dart';
+
+import '../../../core/constants/sprite_options.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../core/constants/sprite_options.dart';
-import '../../../data/repositories/user_repository.dart';
-import '../../../core/widgets/pixel_error_box.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../../core/theme/pixel_decorations.dart';
+import '../../../core/widgets/onboarding_progress_bar.dart';
+import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_field.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_page.dart';
+import '../../../core/widgets/pixel_panel.dart';
+import '../../../core/widgets/sprite_avatar.dart';
 import '../../../core/widgets/sprite_selector.dart';
+import '../../../data/repositories/user_repository.dart';
 
 class SpriteSelectScreen extends StatefulWidget {
   const SpriteSelectScreen({super.key});
@@ -44,11 +50,13 @@ class _SpriteSelectScreenState extends State<SpriteSelectScreen> {
   }
 
   Future<void> _continue() async {
+    if (_saving) return;
     final name = _name.text.trim();
     if (name.isEmpty) {
       setState(() => _error = 'ENTER A DISPLAY NAME.');
       return;
     }
+    FocusScope.of(context).unfocus();
     setState(() {
       _saving = true;
       _error = null;
@@ -83,82 +91,100 @@ class _SpriteSelectScreenState extends State<SpriteSelectScreen> {
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: AppColors.navy,
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.xl, vertical: AppSpacing.lg),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: AppSpacing.sm),
-                const OnboardingProgressBar(currentStep: 2),
-                const SizedBox(height: AppSpacing.xl),
-
-                Text('CHOOSE YOUR\nHERO SPRITE',
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.header.copyWith(
-                      fontSize: 18, color: AppColors.cyan, height: 1.6,
-                      shadows: [const Shadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0)],
-                    )),
-                const SizedBox(height: AppSpacing.md),
-
-                Text('PICK AN AVATAR TO REPRESENT\nYOU IN THE OVERWORLD.',
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.caption.copyWith(height: 1.8)),
-                const SizedBox(height: AppSpacing.xl),
-
-                SpriteSelector(
-                  selectedId: _selectedSprite,
-                  onSelected: (id) => setState(() => _selectedSprite = id),
-                ),
-                const SizedBox(height: AppSpacing.xl),
-
-                Text('DISPLAY NAME', style: AppTextStyles.label),
-                const SizedBox(height: 6),
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.charcoal,
-                    border: Border.all(color: Colors.black, width: 2),
-                    boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(0, 3), blurRadius: 0)],
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: TextField(
-                    controller: _name,
-                    maxLength: 20,
-                    textCapitalization: TextCapitalization.characters,
-                    style: AppTextStyles.body.copyWith(color: AppColors.yellow, fontSize: 9),
-                    cursorColor: AppColors.cyan,
-                    decoration: InputDecoration(
-                      hintText: 'YOUR NAME..',
-                      counterText: '',
-                      hintStyle: AppTextStyles.body.copyWith(color: const Color(0xFF555577), fontSize: 8),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
+        backgroundColor: AppColors.night,
+        body: PixelBackdrop(
+          child: SafeArea(
+            child: PixelColumn(
+              child: Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(AppSpacing.lg,
+                          AppSpacing.lg, AppSpacing.lg + 4, AppSpacing.lg),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Padding(
+                            padding:
+                                EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                            child: OnboardingProgressBar(currentStep: 2),
+                          ),
+                          const SizedBox(height: AppSpacing.xl),
+                          const Text(
+                            'CHOOSE YOUR HERO',
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.header,
+                          ),
+                          const SizedBox(height: AppSpacing.lg),
+                          Center(
+                            child: Container(
+                              width: 128,
+                              height: 128,
+                              decoration: const PixelInset(),
+                              child: Center(
+                                child: SpriteIdle(
+                                  child: SpriteAvatar(
+                                    spriteId: _selectedSprite,
+                                    size: 104,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.lg),
+                          PixelPanel(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                SpriteSelector(
+                                  selectedId: _selectedSprite,
+                                  onSelected: (id) =>
+                                      setState(() => _selectedSprite = id),
+                                ),
+                                const SizedBox(height: AppSpacing.lg),
+                                PixelField(
+                                  label: 'DISPLAY NAME',
+                                  hint: 'YOUR NAME',
+                                  icon: PixelIcons.user,
+                                  controller: _name,
+                                  maxLength: 20,
+                                  enabled: !_saving,
+                                  hasError: _error != null,
+                                  textColor: AppColors.yellow,
+                                  textCapitalization:
+                                      TextCapitalization.characters,
+                                  textInputAction: TextInputAction.done,
+                                  onSubmitted: (_) => _continue(),
+                                ),
+                                if (_error != null) ...[
+                                  const SizedBox(height: AppSpacing.md),
+                                  PixelNote.error(_error!),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if (_googleEmail != null) ...[
+                            const SizedBox(height: AppSpacing.lg),
+                            Text(
+                              'Signed in with Google as $_googleEmail',
+                              textAlign: TextAlign.center,
+                              style: AppTextStyles.caption,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: AppSpacing.xl),
-
-                if (_error != null) ...[
-                  PixelErrorBox(message: _error!),
-                  const SizedBox(height: AppSpacing.md),
+                  PixelActionBar(
+                    child: PixelButton(
+                      label: 'CONTINUE',
+                      icon: PixelIcons.right,
+                      busy: _saving,
+                      onPressed: _continue,
+                    ),
+                  ),
                 ],
-
-                PixelButton(
-                    label: _saving ? '...' : '[ CONTINUE ]',
-                    onPressed: _saving ? null : _continue,
-                    style: PixelButtonStyle.coral),
-
-                if (_googleEmail != null) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  Text('SIGNED IN AS $_googleEmail — VIA GOOGLE',
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.caption.copyWith(color: Colors.white38)),
-                ],
-                const SizedBox(height: AppSpacing.lg),
-              ],
+              ),
             ),
           ),
         ),

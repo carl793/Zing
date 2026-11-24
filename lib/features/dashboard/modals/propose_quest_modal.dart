@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import '../../../core/services/audio_service.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/utils/date_utils.dart';
 import '../../../core/widgets/pixel_button.dart';
-import '../../../core/widgets/pixel_error_box.dart';
+import '../../../core/widgets/pixel_field.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_modal_shell.dart';
+import '../../../core/widgets/pixel_panel.dart';
 import '../controllers/dashboard_controller.dart';
 
 class ProposeQuestModal extends StatefulWidget {
@@ -17,8 +22,9 @@ class ProposeQuestModal extends StatefulWidget {
 class _ProposeQuestModalState extends State<ProposeQuestModal> {
   final _destination = TextEditingController();
   final _notes = TextEditingController();
-  DateTime? _selectedDate;
+  DateTime? _date;
   bool _saving = false;
+  bool _missing = false;
   String? _error;
 
   @override
@@ -29,28 +35,26 @@ class _ProposeQuestModalState extends State<ProposeQuestModal> {
   }
 
   Future<void> _pickDate() async {
+    FocusScope.of(context).unfocus();
+    final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now().add(const Duration(days: 30)),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 730)),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: AppColors.yellow,
-            surface: AppColors.purple,
-          ),
-        ),
-        child: child!,
-      ),
+      initialEntryMode: DatePickerEntryMode.calendarOnly,
+      initialDate: _date ?? now.add(const Duration(days: 30)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 730)),
     );
-    if (picked != null) setState(() => _selectedDate = picked);
+    if (picked != null && mounted) setState(() => _date = picked);
   }
 
   Future<void> _submit() async {
     final destination = _destination.text.trim();
-    if (destination.isEmpty || _selectedDate == null) {
-      setState(() => _error = 'ADD A DESTINATION AND A TARGET DATE.');
+    final date = _date;
+    if (destination.isEmpty || date == null) {
+      setState(() {
+        _missing = true;
+        _error = 'ADD A DESTINATION AND A DATE.';
+      });
       return;
     }
     setState(() {
@@ -60,7 +64,7 @@ class _ProposeQuestModalState extends State<ProposeQuestModal> {
     final notes = _notes.text.trim();
     final error = await context.read<DashboardController>().proposeQuest(
           destination: destination.toUpperCase(),
-          targetDate: _selectedDate!,
+          targetDate: date,
           notes: notes.isEmpty ? null : notes,
         );
     if (!mounted) return;
@@ -71,142 +75,69 @@ class _ProposeQuestModalState extends State<ProposeQuestModal> {
       });
       return;
     }
+    AudioService.instance.playSfx(AppSfx.save);
     Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.lg,
-        top: AppSpacing.lg,
-        left: AppSpacing.lg,
-        right: AppSpacing.lg,
-      ),
-      decoration: const BoxDecoration(
-        color: AppColors.purple,
-        border: Border(
-          top: BorderSide(color: Colors.black, width: 2),
-          left: BorderSide(color: Colors.black, width: 2),
-          right: BorderSide(color: Colors.black, width: 2),
-        ),
-        boxShadow: [
-          BoxShadow(color: Colors.black, offset: Offset(5, -5), blurRadius: 0)
-        ],
+    final date = _date;
+    return PixelModalShell(
+      title: 'PROPOSE A QUEST',
+      icon: PixelIcons.flag,
+      titleColor: AppColors.yellow,
+      busy: _saving,
+      hasUnsavedWork: () =>
+          _destination.text.trim().isNotEmpty ||
+          _notes.text.trim().isNotEmpty ||
+          _date != null,
+      footer: PixelButton(
+        label: _saving ? 'SENDING' : 'PROPOSE QUEST',
+        icon: PixelIcons.send,
+        busy: _saving,
+        onPressed: _submit,
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('PROPOSE REUNION\nQUEST',
-                  style: AppTextStyles.subHeader
-                      .copyWith(color: AppColors.cyan, fontSize: 10)),
-              GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Container(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: AppColors.coral,
-                    border: Border.all(color: Colors.black, width: 2),
-                    boxShadow: const [
-                      BoxShadow(
-                          color: Colors.black,
-                          offset: Offset(2, 2),
-                          blurRadius: 0)
-                    ],
-                  ),
-                  child: Text('[X]',
-                      style: AppTextStyles.caption
-                          .copyWith(color: Colors.black, fontSize: 8)),
-                ),
-              ),
-            ],
+          if (_error != null) ...[
+            PixelNote.error(_error!),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          PixelField(
+            label: 'DESTINATION',
+            hint: 'Davao City',
+            icon: PixelIcons.pin,
+            controller: _destination,
+            maxLength: 40,
+            enabled: !_saving,
+            hasError: _missing && _destination.text.trim().isEmpty,
+            textCapitalization: TextCapitalization.characters,
+            textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: AppSpacing.lg),
-          _fieldLabel('DESTINATION'),
-          _insetBox(
-            child: TextField(
-              controller: _destination,
-              textCapitalization: TextCapitalization.characters,
-              style: AppTextStyles.body
-                  .copyWith(color: Colors.white, fontSize: 8),
-              cursorColor: AppColors.cyan,
-              decoration: _inputDeco('DAVAO CITY, PHILIPPINES'),
-            ),
+          PixelValueBox(
+            label: 'DATE',
+            icon: PixelIcons.calendar,
+            text: date == null
+                ? 'TAP TO CHOOSE'
+                : ZingDateUtils.shortLabel(ZingDateUtils.fromLocal(date)),
+            textColor: date == null ? AppColors.faint : AppColors.yellow,
+            hasError: _missing && date == null,
+            onTap: _saving ? null : _pickDate,
           ),
-          const SizedBox(height: AppSpacing.md),
-          _fieldLabel('TARGET DATE'),
-          GestureDetector(
-            onTap: _pickDate,
-            child: _insetBox(
-              child: Text(
-                _selectedDate != null
-                    ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
-                    : 'TAP TO SELECT DATE..',
-                style: AppTextStyles.body.copyWith(
-                  color: _selectedDate != null
-                      ? AppColors.yellow
-                      : const Color(0xFF555577),
-                  fontSize: 8,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          _fieldLabel('NOTES (OPTIONAL)'),
-          _insetBox(
-            child: TextField(
-              controller: _notes,
-              maxLines: 2,
-              style: AppTextStyles.body
-                  .copyWith(color: Colors.white54, fontSize: 7),
-              cursorColor: AppColors.cyan,
-              decoration: _inputDeco('BOOK FLIGHTS BY END OF SEPTEMBER...'),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          if (_error != null) ...[
-            PixelErrorBox(message: _error!),
-            const SizedBox(height: AppSpacing.md),
-          ],
-          PixelButton(
-            label: _saving ? '...' : '[ PROPOSE QUEST ]',
-            style: PixelButtonStyle.coral,
-            onPressed: _saving ? null : _submit,
+          const SizedBox(height: AppSpacing.lg),
+          PixelField(
+            label: 'NOTES (OPTIONAL)',
+            hint: 'Book flights by September...',
+            controller: _notes,
+            maxLines: 3,
+            maxLength: 200,
+            enabled: !_saving,
+            textCapitalization: TextCapitalization.sentences,
           ),
         ],
       ),
     );
   }
-
-  Widget _fieldLabel(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 5),
-        child: Text(text, style: AppTextStyles.label),
-      );
-
-  Widget _insetBox({required Widget child}) => Container(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        decoration: BoxDecoration(
-          color: AppColors.charcoal,
-          border: Border.all(color: Colors.black, width: 2),
-          boxShadow: const [
-            BoxShadow(
-                color: Colors.black, offset: Offset(0, 3), blurRadius: 0)
-          ],
-        ),
-        child: child,
-      );
-
-  InputDecoration _inputDeco(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle: AppTextStyles.body
-            .copyWith(color: const Color(0xFF555577), fontSize: 7),
-        border: InputBorder.none,
-        isDense: true,
-        contentPadding: EdgeInsets.zero,
-      );
 }

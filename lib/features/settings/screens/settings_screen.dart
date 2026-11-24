@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/session_controller.dart';
@@ -11,9 +12,15 @@ import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/pixel_button.dart';
-import '../../../core/widgets/pixel_snack_bar.dart';
+import '../../../core/widgets/pixel_controls.dart';
+import '../../../core/widgets/pixel_dialog.dart';
+import '../../../core/widgets/pixel_field.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_loader.dart';
+import '../../../core/widgets/pixel_page.dart';
+import '../../../core/widgets/pixel_panel.dart';
+import '../../../core/widgets/pixel_toast.dart';
 import '../../../core/widgets/sprite_selector.dart';
 import '../../../data/repositories/couple_repository.dart';
 import '../../../data/repositories/user_repository.dart';
@@ -51,8 +58,18 @@ class _SettingsViewState extends State<_SettingsView> {
   /// The form is filled once, then belongs to the player until saved.
   bool _filled = false;
 
-  bool _bgmOn = AudioService.instance.bgmEnabled;
-  bool _sfxOn = AudioService.instance.sfxEnabled;
+  final _audio = AudioService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl.addListener(_redraw);
+    _cityCtrl.addListener(_redraw);
+  }
+
+  void _redraw() {
+    if (mounted && _filled) setState(() {});
+  }
 
   @override
   void dispose() {
@@ -64,18 +81,36 @@ class _SettingsViewState extends State<_SettingsView> {
   void _fill(SettingsController ctrl) {
     final me = ctrl.me;
     if (_filled || me == null) return;
-    _filled = true;
     _nameCtrl.text = me.displayName;
     _cityCtrl.text = me.homeCity;
-    _selectedSprite =
-        me.avatarSpriteId.isEmpty ? SpriteOptions.fallback : me.avatarSpriteId;
+    _selectedSprite = _spriteOf(ctrl);
+    _filled = true;
+  }
+
+  static String _spriteOf(SettingsController ctrl) {
+    final id = ctrl.me?.avatarSpriteId ?? '';
+    return id.isEmpty ? SpriteOptions.fallback : id;
+  }
+
+  /// Only the profile waits for SAVE; every switch applies at once.
+  bool _hasChanges(SettingsController ctrl) =>
+      _nameCtrl.text.trim() != ctrl.me?.displayName ||
+      _cityCtrl.text.trim() != ctrl.me?.homeCity ||
+      _selectedSprite != _spriteOf(ctrl);
+
+  void _undo(SettingsController ctrl) {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _filled = false;
+      _fill(ctrl);
+    });
   }
 
   /// Shows the message a controller action returned, if it failed.
   Future<void> _report(Future<String?> action) async {
     final error = await action;
     if (error != null && mounted) {
-      showPixelSnackBar(context, error, color: AppColors.coral);
+      showPixelToast(context, error, color: AppColors.coral);
     }
   }
 
@@ -87,7 +122,7 @@ class _SettingsViewState extends State<_SettingsView> {
       city: _cityCtrl.text.trim(),
       onCityNotFound: () {
         if (!mounted) return;
-        showPixelSnackBar(
+        showPixelToast(
           context,
           "CITY SAVED, BUT IT COULDN'T BE FOUND ON THE MAP. "
           'TRY "CITY, COUNTRY".',
@@ -96,9 +131,10 @@ class _SettingsViewState extends State<_SettingsView> {
       },
     );
     if (!mounted) return;
-    showPixelSnackBar(
+    if (error == null) _audio.playSfx(AppSfx.save);
+    showPixelToast(
       context,
-      error ?? 'SETTINGS SAVED.',
+      error ?? 'PROFILE SAVED.',
       color: error == null ? AppColors.yellow : AppColors.coral,
     );
   }
@@ -110,24 +146,14 @@ class _SettingsViewState extends State<_SettingsView> {
     if (granted) await _report(ctrl.shareLocation());
   }
 
-  void _toggleBgm(bool on) {
-    setState(() => _bgmOn = on);
-    AudioService.instance.setBgmEnabled(on);
-  }
-
-  void _toggleSfx(bool on) {
-    setState(() => _sfxOn = on);
-    AudioService.instance.setSfxEnabled(on);
-  }
-
   Future<void> _unlink(SettingsController ctrl) async {
     final confirmed = await showConfirmDialog(
       context: context,
-      message:
-          'UNLINK FROM YOUR PARTNER?\n\nAll memories and chests are preserved, '
-          'but you will both need to re-pair to reconnect.',
-      confirmLabel: '[ YES, UNLINK ]',
-      cancelLabel: '[ KEEP LINKED ]',
+      title: 'UNLINK?',
+      message: 'Your memories and chests are kept, but you both leave this '
+          'room and have to pair again to reconnect.',
+      confirmLabel: 'UNLINK',
+      cancelLabel: 'STAY LINKED',
     );
     if (confirmed) await _report(ctrl.unlink());
   }
@@ -135,12 +161,23 @@ class _SettingsViewState extends State<_SettingsView> {
   Future<void> _logout() async {
     final auth = context.read<AuthService>();
     final navigator = Navigator.of(context);
+    final confirmed = await showConfirmDialog(
+      context: context,
+      title: 'LOG OUT?',
+      message: 'You stay linked with your partner, and can log back in any '
+          'time.',
+      confirmLabel: 'LOG OUT',
+      confirmIcon: PixelIcons.logout,
+      cancelLabel: 'STAY',
+      icon: PixelIcons.logout,
+    );
+    if (!confirmed) return;
     try {
       await auth.logout();
     } catch (e) {
       debugPrint('Logout failed: $e');
       if (mounted) {
-        showPixelSnackBar(context, "COULDN'T LOG OUT. TRY AGAIN.",
+        showPixelToast(context, "COULDN'T LOG OUT. TRY AGAIN.",
             color: AppColors.coral);
       }
       return;
@@ -148,454 +185,260 @@ class _SettingsViewState extends State<_SettingsView> {
     navigator.pushNamedAndRemoveUntil(AppRoutes.welcome, (_) => false);
   }
 
+  void _copyRoom(String code) {
+    Clipboard.setData(ClipboardData(text: code));
+    showPixelToast(context, 'ROOM CODE COPIED.');
+  }
+
   @override
   Widget build(BuildContext context) {
     final ctrl = context.watch<SettingsController>();
     _fill(ctrl);
-    final couple = ctrl.couple;
 
     if (!_filled) {
-      return Scaffold(
-        backgroundColor: AppColors.navy,
-        body: Center(
-          child: ctrl.loadFailed
-              ? Text(
-                  "COULDN'T LOAD SETTINGS.\nRETRYING...",
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.body.copyWith(color: AppColors.amber),
-                )
-              : const CircularProgressIndicator(color: AppColors.yellow),
-        ),
+      return Center(
+        child: ctrl.loadFailed
+            ? const Padding(
+                padding: EdgeInsets.all(AppSpacing.lg),
+                child:
+                    PixelNote.warning("Couldn't load settings. Retrying..."),
+              )
+            : const PixelLoading(),
       );
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.navy,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.lg,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ── Title ──
-              Text(
-                'SYSTEM CONFIG',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.header.copyWith(
-                  fontSize: 15,
-                  color: AppColors.cyan,
-                  shadows: const [
-                    Shadow(
-                      color: Colors.black,
-                      offset: Offset(3, 3),
-                      blurRadius: 0,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xl),
-
-              // ── Profile ──
-              _Section(
-                title: 'PLAYER PROFILE',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('DISPLAY NAME', style: AppTextStyles.label),
-                    const SizedBox(height: 6),
-                    _InsetTextField(controller: _nameCtrl, hint: 'YOUR NAME'),
-                    const SizedBox(height: AppSpacing.md),
-                    Text('HERO SPRITE', style: AppTextStyles.label),
-                    const SizedBox(height: 6),
-                    SpriteSelector(
-                      selectedId: _selectedSprite ?? SpriteOptions.fallback,
-                      onSelected: (sprite) =>
-                          setState(() => _selectedSprite = sprite),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // ── Location fallback ──
-              _Section(
-                title: 'DISTANCE ENGINE',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _ToggleRow(
-                      label: 'SHARE MY LOCATION',
-                      value: ctrl.isSharingLocation,
-                      onChanged: (on) => _toggleLocation(ctrl, on),
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    Text(
-                      'ONLY YOUR PARTNER SEES IT. TURNING THIS OFF ERASES YOUR '
-                      'LAST POSITION.',
-                      style: AppTextStyles.caption.copyWith(
-                        color: AppColors.gray,
-                        fontSize: 7,
-                        height: 1.6,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    Text(
-                      'HOME CITY (LOCATION FALLBACK)',
-                      style: AppTextStyles.label,
-                    ),
-                    const SizedBox(height: 6),
-                    _InsetTextField(
-                      controller: _cityCtrl,
-                      hint: 'e.g. MANILA, PHILIPPINES',
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    Text(
-                      'USED WHEN GPS IS OFF. SHOWN AS APPROXIMATE DISTANCE.',
-                      style: AppTextStyles.caption.copyWith(
-                        color: AppColors.gray,
-                        fontSize: 7,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    _Row(
-                      label: 'UNIT PREFERENCE',
-                      child: Row(
-                        children: [
-                          _UnitChip(
-                            label: 'KM',
-                            active: ctrl.unit == 'km',
-                            onTap: () => _report(ctrl.setUnit('km')),
-                          ),
-                          const SizedBox(width: 8),
-                          _UnitChip(
-                            label: 'MI',
-                            active: ctrl.unit == 'mi',
-                            onTap: () => _report(ctrl.setUnit('mi')),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // ── Audio ──
-              _Section(
-                title: 'AUDIO & ALERTS',
-                child: Column(
-                  children: [
-                    _ToggleRow(
-                      label: '8-BIT BGM',
-                      value: _bgmOn,
-                      onChanged: _toggleBgm,
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    _ToggleRow(
-                      label: 'CHIPTUNE SFX',
-                      value: _sfxOn,
-                      onChanged: _toggleSfx,
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    _ToggleRow(
-                      label: 'REUNION COUNTDOWN ALERTS',
-                      value: ctrl.alertsOn,
-                      onChanged: (on) => _report(ctrl.setAlerts(on)),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // ── Room info ──
-              if (couple != null)
-                _Section(
-                  title: 'ROOM INFO',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('ROOM ID', style: AppTextStyles.label),
-                      const SizedBox(height: 6),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.charcoal,
-                          border: Border.all(color: Colors.black, width: 2),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              couple.pairingCode,
-                              style: AppTextStyles.body.copyWith(
-                                fontSize: 10,
-                                color: Colors.white,
-                              ),
-                            ),
-                            Text(
-                              '(REFERENCE ONLY)',
-                              style: AppTextStyles.caption.copyWith(
-                                fontSize: 5,
-                                color: AppColors.gray,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // ── Save button ──
-              PixelButton(
-                label: ctrl.saving ? 'SAVING...' : '[ SAVE SETTINGS ]',
-                style: PixelButtonStyle.yellow,
-                onPressed: ctrl.saving ? null : () => _save(ctrl),
-              ),
-              const SizedBox(height: AppSpacing.xl),
-
-              // ── Danger zone ──
-              _Section(
-                title: 'DANGER ZONE',
-                borderColor: AppColors.coral,
+    const gap = SizedBox(height: AppSpacing.lg);
+    return SafeArea(
+      bottom: false,
+      child: PixelColumn(
+        child: Column(
+          children: [
+            const PixelScreenTitle(
+              title: 'CONFIG',
+              icon: PixelIcons.gear,
+              tone: PixelTone.cyan,
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg, 0, AppSpacing.lg + 4, AppSpacing.xl),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    PixelButton(
-                      label: '[ UNLINK PARTNER ROOM ]',
-                      style: PixelButtonStyle.outlineDanger,
-                      backgroundColor: AppColors.charcoal,
-                      onPressed: () => _unlink(ctrl),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    PixelButton(label: '[ LOGOUT ]', onPressed: _logout),
+                    _profile(),
+                    gap,
+                    _distance(ctrl),
+                    gap,
+                    _feedback(ctrl),
+                    gap,
+                    _room(ctrl),
                   ],
                 ),
               ),
-              const SizedBox(height: AppSpacing.xl),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Shared sub-widgets ─────────────────────────────────────────────────────
-
-class _Section extends StatelessWidget {
-  final String title;
-  final Widget child;
-  final Color borderColor;
-  const _Section({
-    required this.title,
-    required this.child,
-    this.borderColor = Colors.black,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.purple,
-        border: Border.all(color: borderColor, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(5, 5), blurRadius: 0),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: AppTextStyles.label.copyWith(
-              color: AppColors.cyan,
-              fontSize: 8,
             ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-class _InsetTextField extends StatelessWidget {
-  final TextEditingController controller;
-  final String hint;
-  const _InsetTextField({required this.controller, required this.hint});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.charcoal,
-        border: Border.all(color: Colors.black, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(0, 3), blurRadius: 0),
-        ],
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: TextField(
-        controller: controller,
-        textCapitalization: TextCapitalization.characters,
-        maxLength: 40,
-        style: AppTextStyles.body.copyWith(
-          color: AppColors.yellow,
-          fontSize: 8,
-        ),
-        cursorColor: AppColors.cyan,
-        decoration: InputDecoration(
-          hintText: hint,
-          counterText: '',
-          hintStyle: AppTextStyles.body.copyWith(
-            color: const Color(0xFF555577),
-            fontSize: 8,
-          ),
-          border: InputBorder.none,
-          isDense: true,
-          contentPadding: EdgeInsets.zero,
-        ),
-      ),
-    );
-  }
-}
-
-class _ToggleRow extends StatelessWidget {
-  final String label;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-  const _ToggleRow({
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: AppTextStyles.body.copyWith(
-              color: AppColors.cyan,
-              fontSize: 7,
-            ),
-          ),
-        ),
-        _PixelSwitch(value: value, onChanged: onChanged),
-      ],
-    );
-  }
-}
-
-class _PixelSwitch extends StatelessWidget {
-  final bool value;
-  final ValueChanged<bool> onChanged;
-  const _PixelSwitch({required this.value, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        AudioService.instance.playSfx(AppSfx.tap);
-        onChanged(!value);
-      },
-      child: Container(
-        width: 38,
-        height: 18,
-        decoration: BoxDecoration(
-          color: AppColors.charcoal,
-          border: Border.all(color: Colors.black, width: 2),
-        ),
-        child: Row(
-          mainAxisAlignment: value
-              ? MainAxisAlignment.end
-              : MainAxisAlignment.start,
-          children: [
-            Container(
-              width: 14,
-              height: 14,
-              color: value ? AppColors.yellow : AppColors.gray,
-            ),
+            if (_hasChanges(ctrl) || ctrl.saving)
+              PixelActionBar(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: PixelButton(
+                        label: 'UNDO',
+                        style: PixelButtonStyle.neutral,
+                        onPressed: ctrl.saving ? null : () => _undo(ctrl),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: PixelButton(
+                        label: ctrl.saving ? 'SAVING' : 'SAVE',
+                        icon: PixelIcons.check,
+                        busy: ctrl.saving,
+                        onPressed: () => _save(ctrl),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
     );
   }
-}
 
-class _UnitChip extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  const _UnitChip({
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
+  Widget _profile() => PixelPanel(
+        title: 'PLAYER',
+        icon: PixelIcons.user,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PixelField(
+              label: 'DISPLAY NAME',
+              hint: 'YOUR NAME',
+              controller: _nameCtrl,
+              maxLength: 20,
+              textColor: AppColors.yellow,
+              textCapitalization: TextCapitalization.characters,
+              textInputAction: TextInputAction.done,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            const PixelLabel('HERO'),
+            SpriteSelector(
+              selectedId: _selectedSprite ?? SpriteOptions.fallback,
+              onSelected: (sprite) => setState(() => _selectedSprite = sprite),
+            ),
+          ],
+        ),
+      );
 
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? AppColors.yellow : AppColors.charcoal,
-          border: Border.all(color: Colors.black, width: 2),
-          boxShadow: active
-              ? const [
-                  BoxShadow(
-                    color: Colors.black,
-                    offset: Offset(2, 2),
-                    blurRadius: 0,
+  Widget _distance(SettingsController ctrl) => PixelPanel(
+        title: 'DISTANCE',
+        icon: PixelIcons.pin,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PixelSettingRow(
+              icon: PixelIcons.pin,
+              label: 'SHARE MY LOCATION',
+              hint: 'Only your partner sees it. Turning it off erases your '
+                  'last position.',
+              control: PixelSwitch(
+                label: 'Share my location',
+                value: ctrl.isSharingLocation,
+                onChanged: (on) => _toggleLocation(ctrl, on),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            PixelField(
+              label: 'HOME CITY',
+              hint: 'MANILA, PHILIPPINES',
+              icon: PixelIcons.home,
+              controller: _cityCtrl,
+              maxLength: 40,
+              textColor: AppColors.yellow,
+              textCapitalization: TextCapitalization.characters,
+              textInputAction: TextInputAction.done,
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Used while your location is off.',
+              style: AppTextStyles.caption,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            const PixelLabel('UNIT'),
+            PixelSegments(
+              labels: const ['KM', 'MILES'],
+              selected: ctrl.unit == 'mi' ? 1 : 0,
+              onSelected: (i) => _report(ctrl.setUnit(i == 1 ? 'mi' : 'km')),
+            ),
+          ],
+        ),
+      );
+
+  Widget _feedback(SettingsController ctrl) => PixelPanel(
+        title: 'SOUND & ALERTS',
+        icon: PixelIcons.sound,
+        child: Column(
+          children: [
+            PixelSettingRow(
+              icon: PixelIcons.music,
+              label: 'MUSIC',
+              control: PixelSwitch(
+                label: 'Music',
+                value: _audio.bgmEnabled,
+                onChanged: (on) {
+                  _audio.setBgmEnabled(on);
+                  setState(() {});
+                },
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            PixelSettingRow(
+              icon: PixelIcons.sound,
+              label: 'SOUND EFFECTS',
+              control: PixelSwitch(
+                label: 'Sound effects',
+                value: _audio.sfxEnabled,
+                onChanged: (on) {
+                  _audio.setSfxEnabled(on);
+                  // The switch itself was silent while they were off.
+                  if (on) _audio.playSfx(AppSfx.toggleOn);
+                  setState(() {});
+                },
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            PixelSettingRow(
+              icon: PixelIcons.vibrate,
+              label: 'VIBRATION',
+              control: PixelSwitch(
+                label: 'Vibration',
+                value: _audio.hapticsEnabled,
+                onChanged: (on) {
+                  _audio.setHapticsEnabled(on);
+                  setState(() {});
+                },
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            PixelSettingRow(
+              icon: PixelIcons.bell,
+              label: 'REUNION ALERTS',
+              control: PixelSwitch(
+                label: 'Reunion alerts',
+                value: ctrl.alertsOn,
+                onChanged: (on) => _report(ctrl.setAlerts(on)),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _room(SettingsController ctrl) {
+    final code = ctrl.couple?.pairingCode ?? '';
+    return PixelPanel(
+      title: 'ROOM & ACCOUNT',
+      icon: PixelIcons.key,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (code.isNotEmpty) ...[
+            const PixelLabel('ROOM CODE, FOR REFERENCE'),
+            Row(
+              children: [
+                Expanded(
+                  child: PixelWell(
+                    child: Text(
+                      code,
+                      style: AppTextStyles.subHeader
+                          .copyWith(color: AppColors.gray),
+                    ),
                   ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          style: AppTextStyles.caption.copyWith(
-            fontSize: 7,
-            color: active ? Colors.black : AppColors.cyan,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                PixelIconButton(
+                  icon: PixelIcons.copy,
+                  label: 'Copy room code',
+                  onPressed: () => _copyRoom(code),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          PixelButton(
+            label: 'LOG OUT',
+            icon: PixelIcons.logout,
+            style: PixelButtonStyle.neutral,
+            onPressed: _logout,
           ),
-        ),
+          const SizedBox(height: AppSpacing.md),
+          PixelButton(
+            label: 'UNLINK PARTNER',
+            icon: PixelIcons.warning,
+            style: PixelButtonStyle.danger,
+            onPressed: () => _unlink(ctrl),
+          ),
+        ],
       ),
-    );
-  }
-}
-
-class _Row extends StatelessWidget {
-  final String label;
-  final Widget child;
-  const _Row({required this.label, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: AppTextStyles.body.copyWith(
-            color: AppColors.cyan,
-            fontSize: 7,
-          ),
-        ),
-        child,
-      ],
     );
   }
 }

@@ -1,17 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+
+import '../../../core/router/app_router.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/widgets/pixel_button.dart';
-import '../../../core/widgets/pixel_tab_bar.dart';
+import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/onboarding_progress_bar.dart';
-import '../../../core/widgets/pixel_snack_bar.dart';
-import '../../../core/widgets/pixel_error_box.dart';
+import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_controls.dart';
+import '../../../core/widgets/pixel_field.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_loader.dart';
+import '../../../core/widgets/pixel_page.dart';
+import '../../../core/widgets/pixel_panel.dart';
+import '../../../core/widgets/pixel_toast.dart';
+import '../../../core/widgets/sprite_avatar.dart';
 import '../../../data/repositories/pairing_repository.dart';
 import '../../../data/repositories/user_repository.dart';
-import '../../../core/services/auth_service.dart';
-import '../../../core/router/app_router.dart';
 import '../controllers/pairing_controller.dart';
 
 class PairingScreen extends StatefulWidget {
@@ -25,11 +32,17 @@ class _PairingScreenState extends State<PairingScreen> {
   Future<void> _logout() async {
     final auth = context.read<AuthService>();
     final navigator = Navigator.of(context);
-    await auth.logout();
-    navigator.pushNamedAndRemoveUntil(
-      AppRoutes.welcome,
-      (_) => false,
-    );
+    try {
+      await auth.logout();
+    } catch (e) {
+      debugPrint('Logout failed: $e');
+      if (mounted) {
+        showPixelToast(context, "COULDN'T LOG OUT. TRY AGAIN.",
+            color: AppColors.coral);
+      }
+      return;
+    }
+    navigator.pushNamedAndRemoveUntil(AppRoutes.welcome, (_) => false);
   }
 
   @override
@@ -56,91 +69,81 @@ class _PairingView extends StatelessWidget {
 
     if (ctrl.linked) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
         Navigator.of(context).pushReplacementNamed(AppRoutes.pairingSuccess);
       });
     }
 
     return Scaffold(
-      backgroundColor: AppColors.navy,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.xl, vertical: AppSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const OnboardingProgressBar(currentStep: 3),
-              const SizedBox(height: AppSpacing.xl),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      backgroundColor: AppColors.night,
+      body: PixelBackdrop(
+        child: SafeArea(
+          child: PixelColumn(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg, AppSpacing.lg, AppSpacing.lg + 4, AppSpacing.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text('👻', style: TextStyle(fontSize: 32)),
-                  Expanded(
-                    child: Text(
-                      'ZING:\nROMANCE SPACE',
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.header.copyWith(
-                        fontSize: 18,
-                        color: AppColors.cyan,
-                        height: 1.4,
-                        shadows: [
-                          const Shadow(
-                              color: Colors.black,
-                              offset: Offset(3, 3),
-                              blurRadius: 0)
-                        ],
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                    child: OnboardingProgressBar(currentStep: 3),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SpriteIdle(
+                        child: SpriteAvatar(spriteId: 'monster_guy', size: 72),
                       ),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: PixelIcon(
+                          PixelIcons.heart,
+                          size: 24,
+                          color: AppColors.coral,
+                          shadow: true,
+                        ),
+                      ),
+                      SpriteIdle(
+                        offBeat: true,
+                        child: SpriteAvatar(spriteId: 'mecha_rabbit', size: 72),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  const Text(
+                    'FIND PLAYER TWO',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.header,
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  PixelSegments(
+                    labels: const ['CREATE', 'JOIN'],
+                    icons: const [PixelIcons.plus, PixelIcons.key],
+                    selected: ctrl.tab == PairingTab.create ? 0 : 1,
+                    onSelected: (i) => ctrl.switchTab(
+                        i == 0 ? PairingTab.create : PairingTab.join),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  PixelPanel(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: ctrl.tab == PairingTab.create
+                        ? const _CreatePanel()
+                        : const _JoinPanel(),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  Center(
+                    child: PixelLink(
+                      label: 'LOG OUT',
+                      icon: PixelIcons.logout,
+                      color: AppColors.gray,
+                      onPressed: onLogout,
                     ),
                   ),
-                  const Text('😈', style: TextStyle(fontSize: 32)),
                 ],
               ),
-              const SizedBox(height: AppSpacing.sm),
-
-              Text(
-                'PRESS START TO CONNECT',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.body
-                    .copyWith(color: AppColors.yellow, fontSize: 8),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              PixelTabBar(
-                labels: const ['CREATE ROOM', 'JOIN ROOM'],
-                activeIndex: ctrl.tab == PairingTab.create ? 0 : 1,
-                onTap: (i) => ctrl.switchTab(
-                    i == 0 ? PairingTab.create : PairingTab.join),
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              ctrl.tab == PairingTab.create
-                  ? const _CreatePanel()
-                  : const _JoinPanel(),
-
-              const SizedBox(height: AppSpacing.xl),
-              const Divider(color: Colors.white12, thickness: 1),
-              const SizedBox(height: AppSpacing.md),
-
-              Center(
-                child: TextButton(
-                  onPressed: onLogout,
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.coral,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-                  ),
-                  child: Text(
-                    '[ LOGOUT ]',
-                    style: AppTextStyles.caption.copyWith(
-                      color: AppColors.coral,
-                      fontSize: 7,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-            ],
+            ),
           ),
         ),
       ),
@@ -157,28 +160,11 @@ class _CreatePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ctrl = context.watch<PairingController>();
-
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.purple,
-        border: Border.all(color: Colors.black, width: 2),
-        boxShadow: const [
-          BoxShadow(
-              color: Colors.black, offset: Offset(5, 5), blurRadius: 0)
-        ],
-      ),
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: switch (ctrl.createState) {
-        CreateState.idle => _CreateIdle(ctrl: ctrl),
-        CreateState.loading => const Center(
-            child: Padding(
-              padding: EdgeInsets.all(AppSpacing.xl),
-              child: CircularProgressIndicator(color: AppColors.yellow),
-            ),
-          ),
-        CreateState.waiting => _CreateWaiting(ctrl: ctrl),
-      },
-    );
+    return switch (ctrl.createState) {
+      CreateState.idle => _CreateIdle(ctrl: ctrl),
+      CreateState.loading => const PixelLoading(label: 'MAKING A CODE'),
+      CreateState.waiting => _CreateWaiting(ctrl: ctrl),
+    };
   }
 }
 
@@ -189,29 +175,23 @@ class _CreateIdle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: AppSpacing.md),
-        const Text('🔑', style: TextStyle(fontSize: 32)),
-        const SizedBox(height: AppSpacing.md),
-        Text(
-          'GENERATE A 6-DIGIT CODE TO\nSHARE WITH YOUR PARTNER.\nTHE CODE STAYS VALID FOR\n24 HOURS.',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.body
-              .copyWith(color: Colors.white70, fontSize: 7, height: 1.8),
+        const Text(
+          'Make a 6-digit code and send it to your partner. It works for 24 '
+          'hours.',
+          style: AppTextStyles.body,
         ),
         const SizedBox(height: AppSpacing.lg),
         if (ctrl.createFailed) ...[
-          const PixelErrorBox(
-            message: "COULDN'T CREATE A CODE.\nCHECK YOUR INTERNET.",
-          ),
-          const SizedBox(height: AppSpacing.md),
+          const PixelNote.error("Couldn't make a code. Check your internet."),
+          const SizedBox(height: AppSpacing.lg),
         ],
         PixelButton(
-          label: '[ GENERATE CODE ]',
-          style: PixelButtonStyle.yellow,
+          label: 'MAKE A CODE',
+          icon: PixelIcons.plus,
           onPressed: ctrl.generateCode,
         ),
-        const SizedBox(height: AppSpacing.sm),
       ],
     );
   }
@@ -221,106 +201,73 @@ class _CreateWaiting extends StatelessWidget {
   final PairingController ctrl;
   const _CreateWaiting({required this.ctrl});
 
+  void _copy(BuildContext context) {
+    if (ctrl.copyCode()) showPixelToast(context, 'CODE COPIED!');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'YOUR 6-DIGIT PAIRING CODE',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.label.copyWith(color: AppColors.cyan),
-        ),
-        const SizedBox(height: AppSpacing.md),
-
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.charcoal,
-            border: Border.all(color: Colors.black, width: 2),
-            boxShadow: const [
-              BoxShadow(
-                  color: Colors.black, offset: Offset(3, 3), blurRadius: 0)
-            ],
-          ),
-          padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md, vertical: AppSpacing.md),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                ctrl.generatedCode ?? '------',
-                style: AppTextStyles.header
-                    .copyWith(color: Colors.white, fontSize: 20),
-              ),
-              GestureDetector(
-                onTap: () {
-                  if (ctrl.copyCode()) showPixelSnackBar(context, 'CODE COPIED!');
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.yellow,
-                    border: Border.all(color: Colors.black, width: 2),
-                    boxShadow: const [
-                      BoxShadow(
-                          color: Colors.black,
-                          offset: Offset(2, 2),
-                          blurRadius: 0)
-                    ],
-                  ),
+        const PixelLabel('YOUR CODE'),
+        Row(
+          children: [
+            Expanded(
+              child: PixelWell(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
                   child: Text(
-                    '[COPY]',
-                    style: AppTextStyles.caption
-                        .copyWith(color: Colors.black, fontSize: 7),
+                    ctrl.generatedCode ?? '------',
+                    style: AppTextStyles.display.copyWith(
+                      fontSize: 24,
+                      letterSpacing: 4,
+                    ),
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            PixelIconButton(
+              icon: PixelIcons.copy,
+              label: 'Copy code',
+              tone: PixelTone.yellow,
+              size: 54,
+              onPressed: () => _copy(context),
+            ),
+          ],
         ),
         const SizedBox(height: AppSpacing.sm),
-
         Text(
-          'CODE EXPIRES IN ${ctrl.countdownDisplay}',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.caption.copyWith(color: AppColors.gray),
+          'Expires in ${ctrl.countdownDisplay}',
+          style: AppTextStyles.caption,
         ),
-        const SizedBox(height: AppSpacing.sm),
-
-        Text(
-          'SHARE THIS CODE WITH YOUR\nPARTNER TO LINK ACCOUNTS.',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.caption
-              .copyWith(color: Colors.white70, height: 1.8),
-        ),
-        const SizedBox(height: AppSpacing.md),
-
-        Text(
-          '... WAITING FOR PARTNER\nTO JOIN...',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.body
-              .copyWith(color: AppColors.cyan, fontSize: 8, height: 1.6),
-        ),
-        const SizedBox(height: AppSpacing.md),
-
+        const SizedBox(height: AppSpacing.lg),
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            GestureDetector(
-              onTap: ctrl.regenerateCode,
+            const PixelLoader(size: 5, color: AppColors.cyan),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
               child: Text(
-                '[ NEW CODE ]',
+                'Waiting for your partner to enter it...',
                 style: AppTextStyles.caption.copyWith(color: AppColors.cyan),
               ),
             ),
-            GestureDetector(
-              onTap: () => ctrl.cancelRoom(),
-              child: Text(
-                '[ CANCEL ]',
-                style: AppTextStyles.caption
-                    .copyWith(color: AppColors.coral),
-              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            PixelLink(
+              label: 'NEW CODE',
+              icon: PixelIcons.refresh,
+              onPressed: ctrl.regenerateCode,
+            ),
+            PixelLink(
+              label: 'CANCEL',
+              color: AppColors.coral,
+              onPressed: ctrl.cancelRoom,
             ),
           ],
         ),
@@ -340,134 +287,101 @@ class _JoinPanel extends StatefulWidget {
 }
 
 class _JoinPanelState extends State<_JoinPanel> {
-  final _codeController = TextEditingController();
+  final _code = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _code.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
-    _codeController.dispose();
+    _code.dispose();
     super.dispose();
+  }
+
+  void _join() {
+    if (_code.text.length != 6) return;
+    FocusScope.of(context).unfocus();
+    context.read<PairingController>().joinRoom(_code.text);
+  }
+
+  /// Takes the code out of whatever was copied, e.g. a whole message.
+  Future<void> _paste() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final code = RegExp(r'\d{3}-?\d{3}').firstMatch(data?.text ?? '')?[0];
+    if (!mounted) return;
+    if (code == null) {
+      showPixelToast(context, 'NO CODE TO PASTE YET.',
+          color: AppColors.amber);
+    } else {
+      _code.text = code.replaceAll('-', '');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final ctrl = context.watch<PairingController>();
+    final error = _messageFor(ctrl.joinError);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.purple,
-            border: Border.all(color: Colors.black, width: 2),
-            boxShadow: const [
-              BoxShadow(
-                  color: Colors.black, offset: Offset(5, 5), blurRadius: 0)
-            ],
-          ),
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            children: [
-              const Text('🔗', style: TextStyle(fontSize: 28)),
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                'ENTER THE 6-DIGIT CODE\nYOUR PARTNER SHARED\nWITH YOU.',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.body.copyWith(
-                    color: Colors.white70, fontSize: 7, height: 1.8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: PixelField(
+                label: "YOUR PARTNER'S CODE",
+                hint: '6 digits',
+                controller: _code,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                maxLength: 6,
+                enabled: !ctrl.joinLoading,
+                hasError: error != null,
+                textInputAction: TextInputAction.done,
+                style: AppTextStyles.header.copyWith(letterSpacing: 4),
+                textColor: AppColors.yellow,
+                onSubmitted: (_) => _join(),
               ),
-              const SizedBox(height: AppSpacing.lg),
-
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.charcoal,
-                  border: Border.all(
-                    color: ctrl.joinError != JoinError.none
-                        ? AppColors.coral
-                        : Colors.black,
-                    width: 2,
-                  ),
-                  boxShadow: const [
-                    BoxShadow(
-                        color: Colors.black,
-                        offset: Offset(0, 3),
-                        blurRadius: 0)
-                  ],
-                ),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 12),
-                child: TextField(
-                  controller: _codeController,
-                  textAlign: TextAlign.center,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  style: AppTextStyles.header
-                      .copyWith(color: Colors.white, fontSize: 14),
-                  cursorColor: AppColors.cyan,
-                  decoration: InputDecoration(
-                    hintText: 'ENTER CODE..',
-                    hintStyle: AppTextStyles.body.copyWith(
-                        color: const Color(0xFF555577), fontSize: 8),
-                    border: InputBorder.none,
-                    isDense: true,
-                    counterText: '',
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ),
-
-              if (ctrl.joinError != JoinError.none) ...[
-                const SizedBox(height: AppSpacing.sm),
-                _JoinErrorBanner(error: ctrl.joinError),
-              ],
-            ],
-          ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            PixelIconButton(
+              icon: PixelIcons.copy,
+              label: 'Paste code',
+              size: 54,
+              onPressed: ctrl.joinLoading ? null : _paste,
+            ),
+          ],
         ),
+        if (error != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          PixelNote.error(error),
+        ],
         const SizedBox(height: AppSpacing.lg),
-
         PixelButton(
-          label: ctrl.joinLoading ? '...' : '[ CONNECT PARTNERS ]',
+          label: 'CONNECT',
+          icon: PixelIcons.heart,
           style: PixelButtonStyle.coral,
-          onPressed: ctrl.joinLoading
-              ? null
-              : () => ctrl.joinRoom(_codeController.text),
+          busy: ctrl.joinLoading,
+          onPressed: _code.text.length == 6 ? _join : null,
         ),
       ],
     );
   }
-}
 
-class _JoinErrorBanner extends StatelessWidget {
-  final JoinError error;
-  const _JoinErrorBanner({required this.error});
-
-  @override
-  Widget build(BuildContext context) {
-    final message = switch (error) {
-      JoinError.notFound =>
-        '✕ THAT CODE DOESN\'T EXIST.\nDOUBLE-CHECK AND TRY AGAIN.',
-      JoinError.expired =>
-        '⌛ THIS CODE HAS EXPIRED.\nASK YOUR PARTNER TO\nGENERATE A NEW ONE.',
-      JoinError.alreadyLinked =>
-        '✕ THIS CODE IS ALREADY\nLINKED TO ANOTHER COUPLE.',
-      JoinError.selfJoin =>
-        '✕ THAT\'S YOUR OWN CODE!\nSHARE IT WITH YOUR\nPARTNER INSTEAD.',
-      JoinError.network =>
-        '⚠ NO CONNECTION.\nCHECK YOUR INTERNET.',
-      JoinError.none => '',
-    };
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.charcoal,
-        border: Border.all(color: AppColors.coral, width: 2),
-      ),
-      child: Text(
-        message,
-        textAlign: TextAlign.center,
-        style: AppTextStyles.error.copyWith(fontSize: 6, height: 1.8),
-      ),
-    );
-  }
+  static String? _messageFor(JoinError error) => switch (error) {
+        JoinError.notFound =>
+          "THAT CODE DOESN'T EXIST. CHECK IT AND TRY AGAIN.",
+        JoinError.expired =>
+          'THIS CODE HAS EXPIRED. ASK YOUR PARTNER FOR A NEW ONE.',
+        JoinError.alreadyLinked =>
+          'THIS CODE IS ALREADY LINKED TO ANOTHER COUPLE.',
+        JoinError.selfJoin =>
+          "THAT'S YOUR OWN CODE! SEND IT TO YOUR PARTNER INSTEAD.",
+        JoinError.network => 'NO CONNECTION. CHECK YOUR INTERNET.',
+        JoinError.none => null,
+      };
 }

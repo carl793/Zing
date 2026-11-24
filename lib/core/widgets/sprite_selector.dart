@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../constants/sprite_options.dart';
+import '../services/audio_service.dart';
 import '../theme/app_colors.dart';
+import '../theme/pixel_decorations.dart';
+import 'pixel_icon.dart';
+import 'pixel_pressable.dart';
 import 'sprite_avatar.dart';
 
-/// Preserves the original square pixel picker while offering the SVG heroes.
+/// A shelf of characters to choose from. The chosen one is held down and lit.
 class SpriteSelector extends StatelessWidget {
   final String selectedId;
   final ValueChanged<String> onSelected;
@@ -20,34 +24,57 @@ class SpriteSelector extends StatelessWidget {
         crossAxisCount: 4,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
         mainAxisSpacing: 8,
         crossAxisSpacing: 8,
-        children: SpriteOptions.selectable.map((option) {
-          final selected = selectedId == option.id;
-          return GestureDetector(
-            onTap: () => onSelected(option.id),
+        children: [
+          for (final option in SpriteOptions.selectable) _tile(option),
+        ],
+      );
+
+  Widget _tile(SpriteOption option) {
+    final selected = selectedId == option.id;
+    return PixelPressable(
+      onPressed: () => onSelected(option.id),
+      sfx: AppSfx.hop,
+      semanticLabel: option.label,
+      selected: selected,
+      builder: (_, pressed) => Stack(
+        children: [
+          Positioned.fill(
             child: Container(
-              decoration: BoxDecoration(
-                color: AppColors.purple,
-                border: Border.all(
-                  color: selected ? AppColors.yellow : Colors.black,
-                  width: selected ? 3 : 2,
-                ),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black,
-                    offset: Offset(2, 2),
-                    blurRadius: 0,
-                  ),
-                ],
+              decoration: PixelRaised(
+                tone: PixelTone.neutral,
+                outline: selected ? AppColors.yellow : AppColors.ink,
+                pressed: pressed || selected,
+                shadow: 2,
               ),
-              alignment: Alignment.center,
-              child: SpriteAvatar(
-                spriteId: option.id,
-                size: selected ? 46 : 40,
+              padding: const EdgeInsets.all(4),
+              child: LayoutBuilder(
+                builder: (_, box) => Center(
+                  child: SpriteAvatar(
+                    spriteId: option.id,
+                    size: box.biggest.shortestSide,
+                  ),
+                ),
               ),
             ),
-          );
-        }).toList(),
-      );
+          ),
+          if (selected)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                color: AppColors.yellow,
+                child: PixelIcon(
+                  PixelIcons.check,
+                  color: PixelTone.yellow.text,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }

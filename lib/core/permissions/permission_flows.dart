@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/location_service.dart';
 import '../theme/app_colors.dart';
-import '../widgets/pixel_snack_bar.dart';
+import '../widgets/pixel_toast.dart';
 import 'permission_sheets.dart';
 
 /// Explains, asks for location, and handles every way it can be refused. True
@@ -30,7 +30,7 @@ Future<bool> ensureLocationAccess(
       final open = await showPermissionBlocked(
         context,
         PermissionKind.location,
-        title: "PHONE LOCATION\nIS OFF",
+        title: "PHONE LOCATION IS OFF",
         how: "Turn on your phone's location, then come back to Zing.",
       );
       if (open) await location.openLocationSettings();
@@ -39,7 +39,7 @@ Future<bool> ensureLocationAccess(
         await location.openAppSettings();
       }
     case LocationAccess.denied:
-      showPixelSnackBar(context, 'NO PROBLEM. YOUR HOME CITY IS USED INSTEAD.');
+      showPixelToast(context, 'NO PROBLEM. YOUR HOME CITY IS USED INSTEAD.');
     case LocationAccess.granted:
       break;
   }
@@ -67,45 +67,66 @@ Future<bool> ensureMicrophoneAccess(
 }
 
 const _photosExplained = 'explained_photos';
+const _quality = 70;
+const double _maxWidth = 1600;
 
-/// Lets the user pick one photo, explaining it the first time. Null when they
-/// cancel, or when it fails (which is reported).
-Future<Uint8List?> pickPhoto(
+/// Lets the user pick up to [limit] photos, explaining it the first time. Empty
+/// when they cancel, or when it fails (which is reported).
+Future<List<Uint8List>> pickPhotos(
   BuildContext context, {
   required LocationService settings,
+  int limit = 1,
 }) async {
   final prefs = await SharedPreferences.getInstance();
   if (!(prefs.getBool(_photosExplained) ?? false)) {
-    if (!context.mounted) return null;
-    if (!await showPermissionPrimer(context, PermissionKind.photos)) return null;
+    if (!context.mounted) return const [];
+    if (!await showPermissionPrimer(context, PermissionKind.photos)) {
+      return const [];
+    }
     await prefs.setBool(_photosExplained, true);
   }
   try {
-    final file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 70,
-      maxWidth: 1600,
-    );
-    return await file?.readAsBytes();
+    final files = limit > 1
+        ? await ImagePicker().pickMultiImage(
+            imageQuality: _quality,
+            maxWidth: _maxWidth,
+            limit: limit,
+          )
+        : [
+            ?await ImagePicker().pickImage(
+              source: ImageSource.gallery,
+              imageQuality: _quality,
+              maxWidth: _maxWidth,
+            ),
+          ];
+    // Some galleries ignore the limit.
+    if (files.length > limit && context.mounted) {
+      showPixelToast(
+        context,
+        'ONLY THE FIRST $limit FIT.',
+        color: AppColors.amber,
+      );
+    }
+    return [for (final file in files.take(limit)) await file.readAsBytes()];
   } on PlatformException catch (e) {
-    debugPrint('Picking a photo failed: ${e.code} ${e.message}');
+    debugPrint('Picking photos failed: ${e.code} ${e.message}');
     // A second tap while the gallery is already opening.
-    if (e.code == 'already_active' || !context.mounted) return null;
+    if (e.code == 'already_active' || !context.mounted) return const [];
     if (e.code.contains('denied')) {
       if (await showPermissionBlocked(context, PermissionKind.photos)) {
         await settings.openAppSettings();
       }
-      return null;
+      return const [];
     }
   } catch (e) {
-    debugPrint('Picking a photo failed: $e');
+    debugPrint('Picking photos failed: $e');
   }
   if (context.mounted) {
-    showPixelSnackBar(
+    showPixelToast(
       context,
       "COULDN'T OPEN THAT PHOTO. TRY ANOTHER ONE.",
       color: AppColors.coral,
     );
   }
-  return null;
+  return const [];
 }

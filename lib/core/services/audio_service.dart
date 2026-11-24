@@ -1,11 +1,27 @@
-import 'dart:math' as math;
-import 'dart:typed_data';
-
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// App-wide audio settings and playback.
+/// The app's sound effects (`assets/audio/sfx`, made by tool/make_sfx.py).
+enum AppSfx {
+  tap('tap'),
+  tick('tick'),
+  toggleOn('toggle_on'),
+  toggleOff('toggle_off'),
+  open('open'),
+  close('close'),
+  hop('hop'),
+  save('save'),
+  seal('seal'),
+  unlock('unlock'),
+  error('error');
+
+  const AppSfx(this.file);
+  final String file;
+}
+
+/// App-wide music, sound effects and vibration, with the player's settings.
 class AudioService {
   AudioService._();
   static final AudioService instance = AudioService._();
@@ -14,11 +30,16 @@ class AudioService {
       'audio/591777__bloodpixelhero__atmospheric-loop-25 (1).mp3';
   static const _keyBgm = 'pref_bgm';
   static const _keySfx = 'pref_sfx';
+  static const _keyHaptics = 'pref_haptics';
+  static const _sfxVolume = 0.6;
 
-  final AudioPlayer _bgmPlayer = AudioPlayer();
-  final AudioPlayer _sfxPlayer = AudioPlayer();
   bool _bgmEnabled = false;
   bool _sfxEnabled = true;
+  bool _hapticsEnabled = true;
+
+  /// False until [init] has run: no player exists before then.
+  bool _ready = false;
+  late final AudioPlayer _bgmPlayer;
   bool _bgmLoaded = false;
   bool _bgmAudible = false;
   bool _inForeground = true;
@@ -26,11 +47,9 @@ class AudioService {
   /// How many things (a recording, a playing voice note) need silence.
   int _musicHolds = 0;
 
-  /// Generated once each; a tap must not recompute its own sound.
-  final Map<AppSfx, Uint8List> _tones = {};
-
   bool get bgmEnabled => _bgmEnabled;
   bool get sfxEnabled => _sfxEnabled;
+  bool get hapticsEnabled => _hapticsEnabled;
 
   /// Never throws: the app must start even if audio doesn't.
   Future<void> init() async {
@@ -38,28 +57,29 @@ class AudioService {
       final prefs = await SharedPreferences.getInstance();
       _bgmEnabled = prefs.getBool(_keyBgm) ?? false;
       _sfxEnabled = prefs.getBool(_keySfx) ?? true;
+      _hapticsEnabled = prefs.getBool(_keyHaptics) ?? true;
       AppLifecycleListener(
         onHide: () => _setForeground(false),
         onShow: () => _setForeground(true),
       );
-      await _sfxPlayer.setAudioContext(
-        AudioContextConfig(
-          focus: AudioContextConfigFocus.mixWithOthers,
-        ).build(),
-      );
+      _bgmPlayer = AudioPlayer();
+      _ready = true;
       await _bgmPlayer.setReleaseMode(ReleaseMode.loop);
       await _bgmPlayer.setVolume(0.35);
       await _updateBgm();
+      // The click is needed first, and at once.
+      await _playerFor(AppSfx.tap);
     } catch (e) {
       debugPrint('Audio setup failed: $e');
     }
   }
 
+  // ── Music ──────────────────────────────────────────────────────────────
+
   Future<void> setBgmEnabled(bool enabled) async {
     _bgmEnabled = enabled;
     await _updateBgm();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyBgm, enabled);
+    await _store(_keyBgm, enabled);
   }
 
   /// Silences the music until a matching [releaseMusic].
@@ -78,12 +98,6 @@ class AudioService {
     _updateBgm();
   }
 
-  Future<void> setSfxEnabled(bool enabled) async {
-    _sfxEnabled = enabled;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keySfx, enabled);
-  }
-
   /// Plays or pauses the music to match the current settings.
   Future<void> _updateBgm() =>
       // One at a time, so a quick off/on can't overlap and end up reversed.
@@ -92,6 +106,7 @@ class AudioService {
   Future<void> _bgmQueue = Future.value();
 
   Future<void> _applyBgm() async {
+    if (!_ready) return;
     final wanted = _bgmEnabled && _inForeground && _musicHolds == 0;
     if (wanted == _bgmAudible) return;
     _bgmAudible = wanted;
@@ -111,60 +126,65 @@ class AudioService {
     }
   }
 
+  // ── Sound effects ──────────────────────────────────────────────────────
+
+  /// One loaded player per effect, so a click sounds the moment it's pressed
+  /// instead of preparing a player first.
+  final Map<AppSfx, Future<AudioPlayer>> _sfxPlayers = {};
+
+  Future<AudioPlayer> _playerFor(AppSfx sfx) =>
+      _sfxPlayers[sfx] ??= _createPlayer(sfx);
+
+  Future<AudioPlayer> _createPlayer(AppSfx sfx) async {
+    final player = AudioPlayer();
+    await player.setPlayerMode(PlayerMode.lowLatency);
+    // Never pauses the player's own music app.
+    await player.setAudioContext(
+      AudioContextConfig(focus: AudioContextConfigFocus.mixWithOthers).build(),
+    );
+    await player.setReleaseMode(ReleaseMode.stop);
+    await player.setVolume(_sfxVolume);
+    await player.setSource(AssetSource('audio/sfx/${sfx.file}.wav'));
+    return player;
+  }
+
   Future<void> playSfx(AppSfx sfx) async {
-    if (!_sfxEnabled) return;
+    if (!_ready || !_sfxEnabled || !_inForeground) return;
     try {
-      final tone = _tones[sfx] ??= _makeTone(sfx.frequency);
-      await _sfxPlayer.stop();
-      await _sfxPlayer.play(BytesSource(tone));
-    } catch (_) {
+      final player = await _playerFor(sfx);
+      await player.stop();
+      await player.resume();
+    } catch (e) {
       // Sound effects must never interrupt an app action.
+      _sfxPlayers.remove(sfx);
+      debugPrint('Sound effect failed: $e');
     }
   }
 
-  Uint8List _makeTone(double frequency) {
-    const sampleRate = 22050;
-    const sampleCount = 1102;
-    const dataSize = sampleCount * 2;
-    final bytes = ByteData(44 + dataSize);
-    void text(int offset, String value) {
-      for (var i = 0; i < value.length; i++) {
-        bytes.setUint8(offset + i, value.codeUnitAt(i));
-      }
-    }
-
-    text(0, 'RIFF');
-    bytes.setUint32(4, 36 + dataSize, Endian.little);
-    text(8, 'WAVE');
-    text(12, 'fmt ');
-    bytes.setUint32(16, 16, Endian.little);
-    bytes.setUint16(20, 1, Endian.little);
-    bytes.setUint16(22, 1, Endian.little);
-    bytes.setUint32(24, sampleRate, Endian.little);
-    bytes.setUint32(28, sampleRate * 2, Endian.little);
-    bytes.setUint16(32, 2, Endian.little);
-    bytes.setUint16(34, 16, Endian.little);
-    text(36, 'data');
-    bytes.setUint32(40, dataSize, Endian.little);
-    for (var i = 0; i < sampleCount; i++) {
-      final fade = math.min(i / 100, (sampleCount - i) / 150).clamp(0.0, 1.0);
-      final wave = math.sin(2 * math.pi * frequency * i / sampleRate);
-      bytes.setInt16(44 + i * 2, (wave * fade * 7000).round(), Endian.little);
-    }
-    return bytes.buffer.asUint8List();
+  Future<void> setSfxEnabled(bool enabled) {
+    _sfxEnabled = enabled;
+    return _store(_keySfx, enabled);
   }
 
-  Future<void> dispose() async {
-    await _bgmPlayer.dispose();
-    await _sfxPlayer.dispose();
+  // ── Vibration ──────────────────────────────────────────────────────────
+
+  Future<void> setHapticsEnabled(bool enabled) {
+    _hapticsEnabled = enabled;
+    return _store(_keyHaptics, enabled);
   }
-}
 
-enum AppSfx {
-  tap(880),
-  save(1175),
-  unlock(1568);
+  /// The small knock of a key being pressed.
+  void knock({bool strong = false}) {
+    if (!_hapticsEnabled) return;
+    strong ? HapticFeedback.mediumImpact() : HapticFeedback.selectionClick();
+  }
 
-  final double frequency;
-  const AppSfx(this.frequency);
+  Future<void> _store(String key, bool value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(key, value);
+    } catch (e) {
+      debugPrint('Saving $key failed: $e');
+    }
+  }
 }

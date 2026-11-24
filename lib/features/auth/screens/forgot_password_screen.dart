@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/services/auth_service.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/widgets/pixel_button.dart';
-import '../../../core/widgets/pixel_error_box.dart';
-import '../../../core/widgets/pixel_text_field.dart';
+import '../../../core/widgets/pixel_field.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_page.dart';
+import '../../../core/widgets/pixel_panel.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -29,9 +31,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Future<void> _send() async {
+    if (_sending) return;
     final email = _email.text.trim();
     if (!Validators.isValidEmail(email)) {
-      setState(() => _error = '✕ ENTER A VALID EMAIL ADDRESS.');
+      setState(() => _error = 'ENTER A VALID EMAIL ADDRESS.');
       return;
     }
     setState(() {
@@ -43,10 +46,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       await context.read<AuthService>().sendPasswordResetEmail(email);
     } on FirebaseAuthException catch (e) {
       error = e.code == 'network-request-failed'
-          ? '⚠ NO CONNECTION. CHECK YOUR INTERNET.'
-          : "⚠ COULDN'T SEND THE LINK. TRY AGAIN.";
+          ? 'NO CONNECTION. CHECK YOUR INTERNET.'
+          : "COULDN'T SEND THE LINK. TRY AGAIN.";
     } catch (_) {
-      error = "⚠ COULDN'T SEND THE LINK. TRY AGAIN.";
+      error = "COULDN'T SEND THE LINK. TRY AGAIN.";
     }
     if (!mounted) return;
     setState(() {
@@ -58,50 +61,56 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.xxl),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            GestureDetector(onTap: () => Navigator.of(context).pop(), child: Text('◀ BACK TO LOGIN', style: AppTextStyles.caption)),
-            const SizedBox(height: AppSpacing.lg),
+    return PixelPage(
+      title: 'NEW PASSCODE',
+      child: PixelPanel(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PixelEmpty(
+              art: PixelIcon(
+                _sent ? PixelIcons.mail : PixelIcons.key,
+                size: 48,
+                color: AppColors.yellow,
+                shadow: true,
+              ),
+              title: _sent ? 'CHECK YOUR EMAIL' : 'FORGOT YOUR PASSCODE?',
+              // Firebase doesn't reveal whether an address has an account.
+              message: _sent
+                  ? 'If an account uses ${_email.text.trim()}, a reset link is '
+                      'on its way.'
+                  : "Enter your email and we'll send a link to set a new one.",
+            ),
+            const SizedBox(height: AppSpacing.md),
             if (!_sent) ...[
-              const Text('🔑', style: TextStyle(fontSize: 26), textAlign: TextAlign.center),
-              const SizedBox(height: AppSpacing.sm),
-              Text('RESET YOUR\nPASSCODE', textAlign: TextAlign.center, style: AppTextStyles.subHeader.copyWith(fontSize: 11)),
-              const SizedBox(height: AppSpacing.lg),
-              PixelTextField(
+              PixelField(
                 label: 'EMAIL',
-                hint: 'ENTER EMAIL..',
+                hint: 'you@email.com',
+                icon: PixelIcons.mail,
                 controller: _email,
                 keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.send,
+                autofillHints: const [AutofillHints.email],
+                enabled: !_sending,
                 hasError: _error != null,
+                onSubmitted: (_) => _send(),
               ),
               const SizedBox(height: AppSpacing.lg),
-              PixelButton(label: _sending ? '...' : '[ SEND RESET LINK ]', onPressed: _sending ? null : _send),
-            ] else ...[
-              const Text('📧', style: TextStyle(fontSize: 26), textAlign: TextAlign.center),
-              const SizedBox(height: AppSpacing.sm),
-              Text('CHECK YOUR\nEMAIL', textAlign: TextAlign.center, style: AppTextStyles.subHeader.copyWith(fontSize: 11)),
-              const SizedBox(height: AppSpacing.sm),
-              // Firebase doesn't reveal whether an address has an account.
-              Text(
-                'IF AN ACCOUNT USES\n${_email.text.trim()},\nA RESET LINK IS ON ITS WAY.',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.caption.copyWith(height: 1.8),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              PixelButton(
-                label: _sending ? '...' : '[ RESEND EMAIL ]',
-                style: PixelButtonStyle.outline,
-                onPressed: _sending ? null : _send,
-              ),
             ],
             if (_error != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              PixelErrorBox(message: _error!),
+              PixelNote.error(_error!),
+              const SizedBox(height: AppSpacing.lg),
             ],
-          ]),
+            PixelButton(
+              label: _sent ? 'SEND AGAIN' : 'SEND LINK',
+              icon: PixelIcons.send,
+              style:
+                  _sent ? PixelButtonStyle.neutral : PixelButtonStyle.yellow,
+              busy: _sending,
+              onPressed: _send,
+            ),
+          ],
         ),
       ),
     );

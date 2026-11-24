@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_text_styles.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../core/widgets/pixel_tab_bar.dart';
-import '../../../core/widgets/pixel_text_field.dart';
-import '../../../core/widgets/pixel_button.dart';
-import '../../../core/widgets/pixel_error_box.dart';
-import '../../../core/utils/validators.dart';
+
 import '../../../core/router/app_router.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../../core/theme/pixel_decorations.dart';
+import '../../../core/utils/validators.dart';
+import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_controls.dart';
+import '../../../core/widgets/pixel_field.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_page.dart';
+import '../../../core/widgets/pixel_panel.dart';
+import '../../../core/widgets/splash_screen.dart';
 import '../controllers/auth_controller.dart';
 import '../widgets/auth_error_banner.dart';
 
@@ -54,15 +60,16 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   }
 
   Future<void> _submit(AuthController controller) async {
+    if (controller.status == AuthStatus.loading) return;
     setState(_clearFormError);
     final email = _email.text.trim();
     final password = _password.text;
     if (!Validators.isValidEmail(email)) {
-      _showFormError('✕ ENTER A VALID EMAIL ADDRESS.', email: true);
+      _showFormError('ENTER A VALID EMAIL ADDRESS.', email: true);
       return;
     }
     if (password.isEmpty) {
-      _showFormError('✕ ENTER YOUR PASSCODE.', password: true);
+      _showFormError('ENTER YOUR PASSCODE.', password: true);
       return;
     }
     final bool ok;
@@ -70,20 +77,23 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       ok = await controller.login(email, password);
     } else {
       if (password.length < 6) {
-        _showFormError('✕ PASSCODE MUST BE AT LEAST 6 CHARACTERS.', password: true);
+        _showFormError('PASSCODE MUST BE AT LEAST 6 CHARACTERS.', password: true);
         return;
       }
       if (password != _confirmPassword.text) {
-        _showFormError('✕ PASSCODES DON\'T MATCH.', password: true);
+        _showFormError("PASSCODES DON'T MATCH.", password: true);
         return;
       }
       if (!_agreedToTerms) {
-        _showFormError('✕ AGREE TO THE TERMS & PRIVACY POLICY TO CONTINUE.');
+        _showFormError('AGREE TO THE TERMS & PRIVACY POLICY TO CONTINUE.');
         return;
       }
       ok = await controller.register(email, password);
     }
-    if (ok) await _routeAfterAuth();
+    if (ok) {
+      TextInput.finishAutofillContext();
+      await _routeAfterAuth();
+    }
   }
 
   Future<void> _google(AuthController controller) async {
@@ -98,13 +108,21 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     } catch (e) {
       debugPrint('Routing after sign-in failed: $e');
       if (mounted) {
-        _showFormError("⚠ SIGNED IN, BUT YOUR PROFILE COULDN'T LOAD. "
+        _showFormError("SIGNED IN, BUT YOUR PROFILE COULDN'T LOAD. "
             'CHECK YOUR CONNECTION AND TRY AGAIN.');
       }
       return;
     }
     if (!mounted) return;
     Navigator.of(context).pushReplacementNamed(route);
+  }
+
+  void _switchTab(AuthController controller, int index) {
+    controller.clearError();
+    setState(() {
+      _tabIndex = index;
+      _clearFormError();
+    });
   }
 
   @override
@@ -114,358 +132,161 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     final isLogin = _tabIndex == 0;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1B1B2F),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.xl,
-              vertical: AppSpacing.lg,
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 12),
-
-                // 1. Pixel Heart + Bolt Logo (Slightly enlarged for scale)
-                const Align(
-                  alignment: Alignment.center,
-                  child: _PixelHeartBoltLogo(),
-                ),
-                const SizedBox(height: 16),
-
-                // 2. Main Title: ZING
-                Text(
-                  'ZING',
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.header.copyWith(
-                    fontSize: 48,
-                    color: AppColors.cyan,
-                    letterSpacing: 2.0,
-                    shadows: const [
-                      Shadow(
-                        color: Colors.black,
-                        offset: Offset(4, 4),
-                        blurRadius: 0,
-                      )
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 6),
-
-                // Subtitle from Figma
-                Text(
-                  'CO-OP ROMANCE SPACE',
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.caption.copyWith(
-                    color: Colors.white70,
-                    letterSpacing: 1.5,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 18),
-
-                // Dynamic Status Ticker
-                Text(
-                  isLogin ? 'PRESS START TO LOGIN' : 'PRESS START TO REGISTER',
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.body.copyWith(
-                    color: AppColors.yellow,
-                    fontSize: 10,
-                    letterSpacing: 1.2,
-                    shadows: const [
-                      Shadow(
-                        color: Colors.black,
-                        offset: Offset(2, 2),
-                        blurRadius: 0,
-                      )
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 28),
-
-                // 3. Popped-out Dual Tab Switcher (Fixed string labels)
-                PixelTabBar(
-                  labels: const ['LOGIN', 'REGISTER'],
-                  activeIndex: _tabIndex,
-                  onTap: (i) {
-                    controller.clearError();
-                    setState(() {
-                      _tabIndex = i;
-                      _clearFormError();
-                    });
-                  },
-                ),
-
-                // CLEAR GAP BETWEEN TOGGLE AND CONTAINER
-                const SizedBox(height: 12),
-
-                // 4. Main Carved/Container Card (Expanded Vertical Height)
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2D2B55),
-                    border: Border.all(color: Colors.black, width: 3),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black,
-                        offset: Offset(5, 5),
-                        blurRadius: 0,
-                      )
-                    ],
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.lg,
-                    vertical: 32.0, // Increased vertical padding for taller presence
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // EMAIL FIELD
-                      _CarvedFieldWrapper(
-                        child: PixelTextField(
-                          label: 'EMAIL',
-                          hint: 'ENTER EMAIL..',
-                          controller: _email,
-                          keyboardType: TextInputType.emailAddress,
-                          hasError: _emailError,
-                        ),
-                      ),
-                      const SizedBox(height: 24), // Generous field spacing
-
-                      // PASSCODE FIELD
-                      _CarvedFieldWrapper(
-                        child: PixelTextField(
-                          label: 'PASSCODE',
-                          hint: isLogin
-                              ? 'ENTER PASSWORD..'
-                              : 'CREATE PASSWORD..',
-                          controller: _password,
-                          obscureText: true,
-                          hasError: _passwordError,
-                        ),
-                      ),
-
-                      // REGISTER ONLY: CONFIRM PASSCODE & TERMS
-                      if (!isLogin) ...[
-                        const SizedBox(height: 24),
-                        _CarvedFieldWrapper(
-                          child: PixelTextField(
-                            label: 'CONFIRM PASSCODE',
-                            hint: 'RE-ENTER PASSWORD..',
-                            controller: _confirmPassword,
-                            obscureText: true,
-                            hasError: _passwordError,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: Checkbox(
-                                value: _agreedToTerms,
-                                onChanged: (v) => setState(
-                                    () => _agreedToTerms = v ?? false),
-                                checkColor: AppColors.cyan,
-                                fillColor: WidgetStateProperty.all(
-                                    const Color(0xFF121124)),
-                                side: const BorderSide(
-                                    color: Colors.black, width: 2),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'I AGREE TO THE TERMS & PRIVACY POLICY',
-                                style: AppTextStyles.caption.copyWith(
-                                  fontSize: 8,
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ] else ...[
-                        // LOGIN ONLY: FORGOT PASSCODE LINK
-                        const SizedBox(height: 18),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: GestureDetector(
-                            onTap: () => Navigator.of(context)
-                                .pushNamed(AppRoutes.forgotPassword),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  'FORGOT PASSCODE?',
-                                  style: AppTextStyles.caption.copyWith(
-                                    color: Colors.white70,
-                                    fontSize: 9,
-                                    letterSpacing: 1.0,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Container(
-                                  height: 2,
-                                  width: 120,
-                                  color: Colors.white38,
-                                )
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-
-                      if (_formError != null) ...[
-                        const SizedBox(height: 16),
-                        PixelErrorBox(message: _formError!),
-                      ] else if (controller.errorType != AuthErrorType.none) ...[
-                        const SizedBox(height: 16),
-                        AuthErrorBanner(errorType: controller.errorType),
-                      ],
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 28),
-
-                // 5. Primary Popped-Out Action Button
-                PixelButton(
-                  label: loading
-                      ? '...'
-                      : isLogin
-                          ? '[ ENTER ]'
-                          : '[ CREATE ACCOUNT ]',
-                  onPressed: loading ? null : () => _submit(controller),
-                  style: PixelButtonStyle.coral,
-                ),
-
-                const SizedBox(height: 20),
-
-                // 6. Retro Pixel Divider
-                Row(
+      backgroundColor: AppColors.night,
+      body: PixelBackdrop(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Expanded(
-                      child: ContainerDivider(),
+                    const Center(child: ZingLogo(size: 72)),
+                    const SizedBox(height: AppSpacing.md),
+                    const ZingWordmark(),
+                    const SizedBox(height: AppSpacing.xl),
+                    PixelSegments(
+                      labels: const ['LOGIN', 'REGISTER'],
+                      selected: _tabIndex,
+                      onSelected:
+                          loading ? null : (i) => _switchTab(controller, i),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(
-                        'OR',
-                        style: AppTextStyles.caption.copyWith(
-                          color: Colors.white38,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                    const SizedBox(height: AppSpacing.md),
+                    _form(controller, isLogin: isLogin, loading: loading),
+                    const SizedBox(height: AppSpacing.lg),
+                    PixelButton(
+                      label: isLogin ? 'PRESS START' : 'CREATE ACCOUNT',
+                      icon: PixelIcons.play,
+                      busy: loading,
+                      onPressed: () => _submit(controller),
                     ),
-                    const Expanded(
-                      child: ContainerDivider(),
+                    const SizedBox(height: AppSpacing.lg),
+                    const _OrDivider(),
+                    const SizedBox(height: AppSpacing.lg),
+                    PixelButton(
+                      label: 'CONTINUE WITH GOOGLE',
+                      style: PixelButtonStyle.neutral,
+                      onPressed: loading ? null : () => _google(controller),
                     ),
                   ],
                 ),
-
-                const SizedBox(height: 20),
-
-                // 7. Social SSO Button (Continue with Google)
-                PixelButton(
-                  label: 'G   CONTINUE WITH GOOGLE',
-                  style: PixelButtonStyle.outline,
-                  onPressed: loading ? null : () => _google(controller),
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
-}
 
-/// Inset / Sunken Container Wrapper for TextFields to give carved depth
-class _CarvedFieldWrapper extends StatelessWidget {
-  final Widget child;
-  const _CarvedFieldWrapper({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF121124),
-        border: Border.all(color: Colors.black, width: 2),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black54,
-            offset: Offset(2, 2),
-            blurRadius: 0,
-          ),
-        ],
+  Widget _form(
+    AuthController controller, {
+    required bool isLogin,
+    required bool loading,
+  }) {
+    return PixelPanel(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: AutofillGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PixelField(
+              label: 'EMAIL',
+              hint: 'you@email.com',
+              icon: PixelIcons.mail,
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.email],
+              enabled: !loading,
+              hasError: _emailError,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            PixelField(
+              label: 'PASSCODE',
+              hint: isLogin ? 'Your passcode' : '6 or more',
+              icon: PixelIcons.lock,
+              controller: _password,
+              secret: true,
+              textInputAction:
+                  isLogin ? TextInputAction.done : TextInputAction.next,
+              autofillHints: [
+                isLogin ? AutofillHints.password : AutofillHints.newPassword,
+              ],
+              enabled: !loading,
+              hasError: _passwordError,
+              onSubmitted: isLogin ? (_) => _submit(controller) : null,
+            ),
+            if (isLogin)
+              Align(
+                alignment: Alignment.centerRight,
+                child: PixelLink(
+                  label: 'FORGOT IT?',
+                  color: AppColors.gray,
+                  onPressed: () => Navigator.of(context)
+                      .pushNamed(AppRoutes.forgotPassword),
+                ),
+              )
+            else ...[
+              const SizedBox(height: AppSpacing.lg),
+              PixelField(
+                label: 'PASSCODE AGAIN',
+                hint: 'Same as above',
+                icon: PixelIcons.lock,
+                controller: _confirmPassword,
+                secret: true,
+                textInputAction: TextInputAction.done,
+                enabled: !loading,
+                hasError: _passwordError,
+                onSubmitted: (_) => _submit(controller),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              PixelCheckbox(
+                value: _agreedToTerms,
+                label: 'I agree to the Terms & Privacy Policy',
+                onChanged: (v) => setState(() => _agreedToTerms = v),
+              ),
+            ],
+            if (_formError != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              PixelNote.error(_formError!),
+            ] else if (controller.errorType != AuthErrorType.none) ...[
+              const SizedBox(height: AppSpacing.md),
+              AuthErrorBanner(errorType: controller.errorType),
+            ],
+          ],
+        ),
       ),
-      padding: const EdgeInsets.all(6),
-      child: child,
     );
   }
 }
 
-/// Custom Pixel Heart + Yellow Lightning Bolt Logo
-class _PixelHeartBoltLogo extends StatelessWidget {
-  const _PixelHeartBoltLogo();
+class _OrDivider extends StatelessWidget {
+  const _OrDivider();
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 64,
-      height: 64,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned(
-            top: 2,
-            left: 2,
-            child: Icon(
-              Icons.favorite,
-              size: 58,
-              color: Colors.black,
-            ),
-          ),
-          const Icon(
-            Icons.favorite,
-            size: 54,
-            color: Color(0xFFFF5376),
-          ),
-          Positioned(
-            child: Icon(
-              Icons.bolt,
-              size: 34,
-              color: AppColors.yellow,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Crisp Retro Horizontal Line Divider
-class ContainerDivider extends StatelessWidget {
-  const ContainerDivider({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 2,
-      color: Colors.black,
+    final line = Expanded(
       child: Container(
-        margin: const EdgeInsets.only(top: 1),
-        height: 1,
-        color: Colors.white24,
+        height: kPixel * 2,
+        decoration: const BoxDecoration(
+          color: AppColors.ink,
+          border: Border(
+            bottom: BorderSide(color: AppColors.violet, width: kPixel),
+          ),
+        ),
       ),
+    );
+    return Row(
+      children: [
+        line,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: Text('OR', style: AppTextStyles.caption),
+        ),
+        line,
+      ],
     );
   }
 }

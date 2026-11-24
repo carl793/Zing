@@ -2,19 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/models/memory_model.dart';
+import '../../../core/photos/photo_carousel.dart';
+import '../../../core/photos/pixel_photo.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_shadows.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/date_utils.dart';
-import '../../../core/widgets/attribution_tag.dart';
-import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/pixel_button.dart';
-import '../../../core/widgets/pixel_error_box.dart';
+import '../../../core/widgets/pixel_controls.dart';
+import '../../../core/widgets/pixel_dialog.dart';
+import '../../../core/widgets/pixel_icon.dart';
 import '../../../core/widgets/pixel_modal_shell.dart';
+import '../../../core/widgets/pixel_panel.dart';
 import '../controllers/calendar_controller.dart';
 import '../widgets/comments_section.dart';
-import '../widgets/photo_carousel.dart';
 
 /// Returned to the calendar screen when the user asks to edit.
 enum ViewMemoryAction { edit }
@@ -31,6 +32,9 @@ class ViewMemoryModal extends StatefulWidget {
 }
 
 class _ViewMemoryModalState extends State<ViewMemoryModal> {
+  late final List<PhotoItem> _photos = [
+    for (final url in widget.memory.photoUrls) PhotoItem.url(url),
+  ];
   bool _busy = false;
   String? _error;
 
@@ -38,9 +42,12 @@ class _ViewMemoryModalState extends State<ViewMemoryModal> {
     final ctrl = context.read<CalendarController>();
     final confirmed = await showConfirmDialog(
       context: context,
-      message: 'DELETE "${widget.memory.title.toUpperCase()}"?\n'
-          'THIS REMOVES THE PHOTOS, NOTE,\nAND TAG PERMANENTLY.',
-      confirmLabel: '[ YES, DELETE MEMORY ]',
+      title: 'DELETE MEMORY?',
+      message: '"${widget.memory.title}" and its photos, story and tag will be '
+          'gone for both of you.',
+      confirmLabel: 'DELETE',
+      confirmIcon: PixelIcons.trash,
+      cancelLabel: 'KEEP IT',
     );
     if (!confirmed || !mounted) return;
 
@@ -64,141 +71,81 @@ class _ViewMemoryModalState extends State<ViewMemoryModal> {
   Widget build(BuildContext context) {
     final ctrl = context.read<CalendarController>();
     final memory = widget.memory;
-    final isOwn = memory.authorUid == ctrl.myUid;
+    final isOwn = ctrl.isMine(memory.authorUid);
     final date = ZingDateUtils.fromStored(memory.date);
-    final location = memory.locationPin?.name;
+    final location = memory.locationPin?.name ?? '';
 
     return PixelModalShell(
-      title: 'STAGE CLEAR:\n${ZingDateUtils.shortLabel(date)}',
+      title: 'STAGE CLEAR',
+      icon: PixelIcons.star,
       titleColor: AppColors.yellow,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: AttributionTag(
-              label: isOwn ? 'YOU' : ctrl.partnerName,
-              isMine: isOwn,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: [
-              if (memory.tagCategory.isNotEmpty)
-                _Pill(text: memory.tagCategory, color: AppColors.coral),
-              if (location != null && location.isNotEmpty)
-                _Pill(text: location, color: AppColors.cyan, icon: Icons.place),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          PhotoCarousel(urls: memory.photoUrls),
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            memory.title,
-            style: AppTextStyles.subHeader
-                .copyWith(color: AppColors.cyan, fontSize: 10, height: 1.5),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Text('STORY', style: AppTextStyles.label),
-          const SizedBox(height: 6),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(AppSpacing.md),
-            decoration: AppShadows.insetField(),
-            child: Text(
-              memory.story.isEmpty ? 'NO CAPTION WRITTEN.' : memory.story,
-              style: AppTextStyles.body.copyWith(
-                fontSize: 7,
-                height: 1.8,
-                color: memory.story.isEmpty ? AppColors.gray : Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          if (isOwn)
-            Row(
+      busy: _busy,
+      footer: !isOwn
+          ? null
+          : Row(
               children: [
                 Expanded(
                   child: PixelButton(
-                    label: '[ EDIT ]',
-                    style: PixelButtonStyle.outline,
-                    backgroundColor: AppColors.charcoal,
+                    label: 'EDIT',
+                    icon: PixelIcons.edit,
+                    style: PixelButtonStyle.neutral,
                     onPressed: _busy
                         ? null
-                        : () => Navigator.of(context).pop(ViewMemoryAction.edit),
+                        : () =>
+                            Navigator.of(context).pop(ViewMemoryAction.edit),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: PixelButton(
-                    label: '[ DELETE ]',
-                    style: PixelButtonStyle.outlineDanger,
-                    backgroundColor: AppColors.charcoal,
-                    onPressed: _busy ? null : _delete,
-                  ),
-                ),
-              ],
-            )
-          else
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.lock, size: 9, color: AppColors.gray),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    "THIS IS ${ctrl.partnerName}'S ENTRY - VIEW ONLY",
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.caption.copyWith(color: AppColors.gray),
+                    label: 'DELETE',
+                    icon: PixelIcons.trash,
+                    style: PixelButtonStyle.danger,
+                    busy: _busy,
+                    onPressed: _delete,
                   ),
                 ),
               ],
             ),
-          if (_error != null) ...[
-            const SizedBox(height: AppSpacing.md),
-            PixelErrorBox(message: _error!),
-          ],
-          const SizedBox(height: AppSpacing.lg),
-          CommentsSection(memory: memory, canComment: !isOwn),
-        ],
-      ),
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  final String text;
-  final Color color;
-  final IconData? icon;
-  const _Pill({required this.text, required this.color, this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.charcoal,
-        border: Border.all(color: color, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 9, color: color),
-            const SizedBox(width: 4),
+          if (_error != null) ...[
+            PixelNote.error(_error!),
+            const SizedBox(height: AppSpacing.lg),
           ],
-          Flexible(
-            child: Text(
-              text,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.caption.copyWith(color: color, fontSize: 6),
-            ),
+          if (_photos.isNotEmpty) ...[
+            PhotoCarousel(photos: _photos, title: memory.title),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          Text(memory.title, style: AppTextStyles.subHeader),
+          const SizedBox(height: AppSpacing.md),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              PixelTag(
+                ZingDateUtils.shortLabel(date),
+                icon: PixelIcons.calendar,
+                color: AppColors.yellow,
+              ),
+              PixelTag.owner(isOwn ? 'YOU' : ctrl.partnerName, isMe: isOwn),
+              if (memory.tagCategory.isNotEmpty)
+                PixelTag(
+                  memory.tagCategory,
+                  icon: PixelIcons.tag,
+                  color: AppColors.gray,
+                ),
+              if (location.isNotEmpty)
+                PixelTag(location, icon: PixelIcons.pin, color: AppColors.gray),
+            ],
           ),
+          const SizedBox(height: AppSpacing.lg),
+          if (memory.story.isNotEmpty) ...[
+            SelectableText(memory.story, style: AppTextStyles.body),
+            const SizedBox(height: AppSpacing.xl),
+          ],
+          CommentsSection(memory: memory, canComment: !isOwn),
         ],
       ),
     );

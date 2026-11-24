@@ -5,6 +5,10 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
 import 'pixel_button.dart';
+import 'pixel_icon.dart';
+import 'pixel_loader.dart';
+import 'pixel_page.dart';
+import 'pixel_panel.dart';
 
 /// Branded launch screen shown while the signed-in destination is resolved.
 class SplashScreen extends StatefulWidget {
@@ -16,20 +20,14 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _loadingAnimation = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  )..repeat();
+class _SplashScreenState extends State<SplashScreen> {
+  bool _failed = false;
 
   @override
   void initState() {
     super.initState();
     _continueToApp();
   }
-
-  bool _failed = false;
 
   Future<void> _continueToApp() async {
     final String route;
@@ -58,133 +56,89 @@ class _SplashScreenState extends State<SplashScreen>
     _continueToApp();
   }
 
-  Widget _failure() => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-        child: Column(
-          children: [
-            Text(
-              "COULDN'T CONNECT.\nCHECK YOUR INTERNET.",
-              textAlign: TextAlign.center,
-              style: AppTextStyles.body.copyWith(color: AppColors.amber),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            PixelButton(
-              label: '[ RETRY ]',
-              style: PixelButtonStyle.yellow,
-              onPressed: _retry,
-            ),
-          ],
-        ),
-      );
-
-  @override
-  void dispose() {
-    _loadingAnimation.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.navy,
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.72, end: 1),
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeOutBack,
-              builder: (context, scale, child) => Transform.scale(
-                scale: scale,
-                child: child,
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: AppColors.purple,
-                  border: Border.all(color: Colors.black, width: 3),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black,
-                      offset: Offset(5, 5),
-                      blurRadius: 0,
-                    ),
-                  ],
-                ),
-                child: SvgPicture.asset(
-                  'assets/images/zing_logo.svg',
-                  width: 88,
-                  height: 88,
-                  semanticsLabel: 'Zing pixel heart and lightning logo',
-                ),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            Text(
-              'ZING',
-              style: AppTextStyles.header.copyWith(
-                fontSize: 24,
-                color: AppColors.cyan,
-                letterSpacing: 4,
-                shadows: const [
-                  Shadow(
-                    color: Colors.black,
-                    offset: Offset(3, 3),
-                    blurRadius: 0,
+      backgroundColor: AppColors.night,
+      body: PixelBackdrop(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.72, end: 1),
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.easeOutBack,
+                    builder: (_, scale, child) =>
+                        Transform.scale(scale: scale, child: child),
+                    child: const ZingLogo(size: 104),
                   ),
+                  const SizedBox(height: AppSpacing.xl),
+                  const ZingWordmark(),
+                  const SizedBox(height: AppSpacing.xxl),
+                  if (_failed) ...[
+                    const PixelNote.warning(
+                      "Couldn't connect. Check your internet.",
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    PixelButton(
+                      label: 'RETRY',
+                      icon: PixelIcons.refresh,
+                      onPressed: _retry,
+                    ),
+                  ] else
+                    const PixelLoader(),
                 ],
               ),
             ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'CO-OP ROMANCE SPACE',
-              style: AppTextStyles.caption.copyWith(
-                color: Colors.white70,
-                letterSpacing: 1,
-                fontSize: 7,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            if (_failed) _failure() else ...[
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(3, (index) {
-                return AnimatedBuilder(
-                  animation: _loadingAnimation,
-                  builder: (context, child) {
-                    final phase = (_loadingAnimation.value - index * 0.18) % 1;
-                    final opacity = phase < 0.55 ? 0.35 + phase : 0.9 - phase;
-                    return Opacity(
-                      opacity: opacity.clamp(0.25, 1).toDouble(),
-                      child: child,
-                    );
-                  },
-                  child: Container(
-                    width: 12,
-                    height: 12,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      color: index == 1 ? AppColors.cyan : AppColors.yellow,
-                      border: Border.all(color: Colors.black, width: 2),
-                    ),
-                  ),
-                );
-              }),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'LOADING',
-              style: AppTextStyles.caption.copyWith(
-                color: Colors.white70,
-                fontSize: 7,
-                letterSpacing: 1,
-              ),
-            ),
-            ],
-          ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// The heart and bolt.
+class ZingLogo extends StatelessWidget {
+  final double size;
+  const ZingLogo({super.key, required this.size});
+
+  @override
+  Widget build(BuildContext context) => SvgPicture.asset(
+        'assets/images/zing_logo.svg',
+        width: size,
+        height: size,
+        semanticsLabel: 'Zing logo',
+      );
+}
+
+class ZingWordmark extends StatelessWidget {
+  const ZingWordmark({super.key});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'ZING',
+            style: AppTextStyles.header.copyWith(
+              fontSize: 40,
+              color: AppColors.cyan,
+              letterSpacing: 2,
+              shadows: const [
+                Shadow(color: Color(0xFF17869F), offset: Offset(0, 4)),
+                Shadow(color: AppColors.ink, offset: Offset(3, 7)),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'CO-OP ROMANCE SPACE',
+            style: AppTextStyles.caption.copyWith(letterSpacing: 1),
+          ),
+        ],
+      );
 }

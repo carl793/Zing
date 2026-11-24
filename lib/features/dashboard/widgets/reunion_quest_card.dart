@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/models/couple_model.dart';
+import '../../../core/services/audio_service.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../../core/utils/date_utils.dart';
+import '../../../core/widgets/countdown_digits.dart';
 import '../../../core/widgets/pixel_button.dart';
-import '../../../core/widgets/pixel_snack_bar.dart';
+import '../../../core/widgets/pixel_dialog.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_panel.dart';
+import '../../../core/widgets/pixel_toast.dart';
 import '../controllers/dashboard_controller.dart';
 
+/// The next time the couple will meet: proposed, answered, counted down to.
 class ReunionQuestCard extends StatelessWidget {
   final DashboardController controller;
   final VoidCallback onPropose;
@@ -21,224 +29,212 @@ class ReunionQuestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: AppColors.purple,
-        border: Border.all(color: Colors.black, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(5, 5), blurRadius: 0),
-        ],
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.lg,
-        vertical: AppSpacing.xl,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'NEXT REUNION QUEST',
-            style: AppTextStyles.label.copyWith(
-              color: AppColors.cyan,
-              fontSize: 11,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          _buildBody(context),
-        ],
-      ),
+    return PixelPanel(
+      title: 'REUNION QUEST',
+      icon: PixelIcons.flag,
+      titleColor: AppColors.yellow,
+      child: switch (controller.questState) {
+        QuestState.none => _Empty(onPropose: onPropose),
+        QuestState.pending => _Pending(controller, onReview: onReview),
+        QuestState.accepted => controller.questIsDue
+            ? _Due(controller)
+            : _Countdown(controller),
+      },
     );
-  }
-
-  Widget _buildBody(BuildContext context) {
-    return switch (controller.questState) {
-      QuestState.none => _QuestEmpty(onPropose: onPropose),
-      QuestState.pending => _QuestPending(
-        controller: controller,
-        onReview: onReview,
-      ),
-      QuestState.accepted => _QuestAccepted(controller: controller),
-    };
   }
 }
 
-class _QuestEmpty extends StatelessWidget {
+Future<void> _clear(
+  BuildContext context,
+  DashboardController controller, {
+  String? done,
+}) async {
+  final error = await controller.cancelQuest();
+  if (!context.mounted) return;
+  if (error != null) {
+    showPixelToast(context, error, color: AppColors.coral);
+  } else if (done != null) {
+    AudioService.instance.playSfx(AppSfx.unlock);
+    showPixelToast(context, done);
+  }
+}
+
+class _Empty extends StatelessWidget {
   final VoidCallback onPropose;
-  const _QuestEmpty({required this.onPropose});
+  const _Empty({required this.onPropose});
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const Text('🗺️', style: TextStyle(fontSize: 26)),
-        const SizedBox(height: AppSpacing.sm),
-        Text(
-          'NO REUNION QUEST\nSCHEDULED YET.',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.caption.copyWith(
-            color: AppColors.gray,
-            height: 1.8,
-          ),
+  Widget build(BuildContext context) => PixelEmpty(
+        art: const PixelIcon(
+          PixelIcons.flag,
+          size: 36,
+          color: AppColors.yellow,
+          shadow: true,
         ),
-        const SizedBox(height: AppSpacing.md),
-        PixelButton(
-          label: '[ + PROPOSE QUEST ]',
-          style: PixelButtonStyle.yellow,
+        title: 'NO QUEST YET',
+        message: 'Pick where and when you meet next, and count down to it '
+            'together.',
+        action: PixelButton(
+          label: 'PROPOSE A QUEST',
+          icon: PixelIcons.plus,
           onPressed: onPropose,
         ),
-      ],
-    );
-  }
+      );
 }
 
-class _QuestPending extends StatelessWidget {
-  final DashboardController controller;
-  final VoidCallback onReview;
-  const _QuestPending({required this.controller, required this.onReview});
+/// Where and when.
+class _Details extends StatelessWidget {
+  final ReunionQuest? quest;
+  const _Details(this.quest);
 
   @override
   Widget build(BuildContext context) {
-    final quest = controller.couple?.reunionQuest;
-    final isProposer = controller.isQuestProposer;
-    final partnerName = controller.partner?.displayName ?? 'PARTNER';
+    final date = quest?.targetDate;
+    return PixelWell(
+      child: Column(
+        children: [
+          _line(PixelIcons.pin, quest?.destination ?? '---', AppColors.white),
+          const SizedBox(height: AppSpacing.sm),
+          _line(
+            PixelIcons.calendar,
+            date == null
+                ? '---'
+                : ZingDateUtils.shortLabel(ZingDateUtils.fromLocal(date)),
+            AppColors.yellow,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _line(PixelIcons icon, String text, Color color) => Row(
+        children: [
+          PixelIcon(icon, color: AppColors.cyan),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              text,
+              style: AppTextStyles.button.copyWith(color: color),
+            ),
+          ),
+        ],
+      );
+}
+
+class _Pending extends StatelessWidget {
+  final DashboardController controller;
+  final VoidCallback onReview;
+  const _Pending(this.controller, {required this.onReview});
+
+  @override
+  Widget build(BuildContext context) {
+    final mine = controller.isQuestProposer;
+    final partner = controller.session.partnerName;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          isProposer
-              ? 'QUEST PROPOSED — AWAITING\n${partnerName.toUpperCase()}\'S RESPONSE'
-              : '${partnerName.toUpperCase()} PROPOSED\nA QUEST!',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.body.copyWith(
-            color: AppColors.yellow,
-            fontSize: 8,
-            height: 1.6,
+          mine ? 'WAITING FOR $partner' : '$partner PROPOSED A QUEST!',
+          style: AppTextStyles.button.copyWith(
+            color: mine ? AppColors.gray : AppColors.yellow,
           ),
         ),
         const SizedBox(height: AppSpacing.md),
-        Container(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          color: AppColors.charcoal,
-          child: Column(
-            children: [
-              _questRow('📍', quest?.destination ?? '---'),
-              const SizedBox(height: 4),
-              _questRow(
-                '📅',
-                quest?.targetDate != null
-                    ? '${quest!.targetDate!.year}-${quest.targetDate!.month.toString().padLeft(2, '0')}-${quest.targetDate!.day.toString().padLeft(2, '0')}'
-                    : '---',
-              ),
-            ],
-          ),
-        ),
+        _Details(controller.couple?.reunionQuest),
         const SizedBox(height: AppSpacing.md),
-        if (isProposer)
-          GestureDetector(
-            onTap: () async {
-              final error = await controller.cancelQuest();
-              if (error != null && context.mounted) {
-                showPixelSnackBar(context, error, color: AppColors.coral);
-              }
-            },
-            child: Text(
-              '[ CANCEL PROPOSAL ]',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.caption.copyWith(color: AppColors.coral),
-            ),
+        if (mine)
+          PixelButton(
+            label: 'WITHDRAW',
+            style: PixelButtonStyle.neutral,
+            small: true,
+            onPressed: () => _clear(context, controller),
           )
         else
           PixelButton(
-            label: '[ REVIEW QUEST ]',
-            style: PixelButtonStyle.yellow,
+            label: 'REVIEW QUEST',
+            icon: PixelIcons.eye,
             onPressed: onReview,
           ),
       ],
     );
   }
-
-  Widget _questRow(String icon, String text) => Row(
-    children: [
-      Text(icon, style: const TextStyle(fontSize: 12)),
-      const SizedBox(width: 8),
-      Text(
-        text,
-        style: AppTextStyles.body.copyWith(color: AppColors.cyan, fontSize: 8),
-      ),
-    ],
-  );
 }
 
-class _QuestAccepted extends StatelessWidget {
+class _Countdown extends StatelessWidget {
   final DashboardController controller;
-  const _QuestAccepted({required this.controller});
+  const _Countdown(this.controller);
+
+  Future<void> _cancel(BuildContext context) async {
+    final sure = await showConfirmDialog(
+      context: context,
+      title: 'CANCEL QUEST?',
+      message: 'The countdown ends for both of you. You can always propose a '
+          'new one.',
+      confirmLabel: 'CANCEL QUEST',
+      cancelLabel: 'KEEP IT',
+    );
+    if (sure && context.mounted) await _clear(context, controller);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final left = controller.questRemaining;
+    final percent = (controller.questProgress * 100).floor();
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Accepted chip
-        Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm,
-            vertical: 4,
-          ),
-          decoration: BoxDecoration(
-            color: AppColors.charcoal,
-            border: Border.all(color: AppColors.cyan, width: 1),
-          ),
-          child: Text(
-            '✓ ACCEPTED BY BOTH',
-            style: AppTextStyles.caption.copyWith(
-              color: AppColors.cyan,
-              fontSize: 8,
-            ),
-          ),
-        ),
+        _Details(controller.couple?.reunionQuest),
         const SizedBox(height: AppSpacing.md),
-        // Countdown
-        Text(
-          controller.questCountdown,
-          textAlign: TextAlign.center,
-          style: AppTextStyles.header.copyWith(
-            color: AppColors.yellow,
-            fontSize: 18,
-            shadows: [
-              const Shadow(
-                color: Colors.black,
-                offset: Offset(3, 3),
-                blurRadius: 0,
-              ),
-            ],
-          ),
-        ),
+        CountdownDigits(left),
         const SizedBox(height: AppSpacing.md),
-        // Progress bar
-        Container(
-          height: 14,
-          decoration: BoxDecoration(
-            color: AppColors.charcoal,
-            border: Border.all(color: Colors.black, width: 2),
-          ),
-          child: FractionallySizedBox(
-            widthFactor: controller.questProgress,
-            heightFactor: 1,
-            alignment: Alignment.centerLeft,
-            child: Container(color: AppColors.yellow),
-          ),
-        ),
+        PixelProgressBar(value: controller.questProgress),
         const SizedBox(height: AppSpacing.xs),
-        Text(
-          '${(controller.questProgress * 100).toStringAsFixed(0)}% JOURNEY COMPLETED',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.caption.copyWith(
-            color: AppColors.gray,
-            fontSize: 7,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text('$percent% THERE', style: AppTextStyles.caption),
+            ),
+            PixelLink(
+              label: 'CANCEL',
+              color: AppColors.gray,
+              onPressed: () => _cancel(context),
+            ),
+          ],
         ),
       ],
     );
   }
+}
+
+class _Due extends StatelessWidget {
+  final DashboardController controller;
+  const _Due(this.controller);
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            "IT'S THE DAY!",
+            textAlign: TextAlign.center,
+            style: AppTextStyles.display.copyWith(fontSize: 16),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _Details(controller.couple?.reunionQuest),
+          const SizedBox(height: AppSpacing.md),
+          const PixelProgressBar(value: 1),
+          const SizedBox(height: AppSpacing.md),
+          PixelButton(
+            label: 'QUEST COMPLETE',
+            icon: PixelIcons.star,
+            onPressed: () => _clear(
+              context,
+              controller,
+              done: 'QUEST COMPLETE! LOG THE MEMORY NEXT.',
+            ),
+          ),
+        ],
+      );
 }

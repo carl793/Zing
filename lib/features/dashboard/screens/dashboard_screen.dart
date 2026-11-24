@@ -2,19 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/session_controller.dart';
+import '../../../core/models/capsule_model.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/theme/pixel_decorations.dart';
+import '../../../core/utils/date_utils.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_modal_shell.dart';
+import '../../../core/widgets/pixel_page.dart';
+import '../../../core/widgets/pixel_pressable.dart';
+import '../../../core/widgets/sprite_avatar.dart';
 import '../../../data/repositories/couple_repository.dart';
 import '../../../data/repositories/memory_repository.dart';
 import '../../../data/repositories/user_repository.dart';
 import '../../shell/shell_tabs.dart';
+import '../../vault/controllers/vault_controller.dart';
 import '../controllers/dashboard_controller.dart';
 import '../modals/propose_quest_modal.dart';
 import '../modals/review_quest_modal.dart';
 import '../widgets/distance_card.dart';
+import '../widgets/overworld_scene.dart';
 import '../widgets/reunion_quest_card.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -62,197 +72,145 @@ class _DashboardViewState extends State<_DashboardView> {
     super.dispose();
   }
 
+  void _openSheet(DashboardController ctrl, Widget sheet, {bool form = false}) =>
+      showPixelSheet<void>(
+        context: context,
+        isForm: form,
+        builder: (_) =>
+            ChangeNotifierProvider.value(value: ctrl, child: sheet),
+      );
+
   @override
   Widget build(BuildContext context) {
     final ctrl = context.watch<DashboardController>();
+    final tabs = context.read<ShellTabs>();
 
-    return Scaffold(
-        backgroundColor: AppColors.navy,
-        body: SafeArea(
-          child: Column(
-            children: [
-              _HeaderBar(
-                p1Name: ctrl.me?.displayName ?? '...',
-                p2Name: ctrl.partner?.displayName ?? '...',
+    return SafeArea(
+      bottom: false,
+      child: PixelColumn(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.md),
+              child: PlayerHud(
+                myName: ctrl.me?.displayName ?? '...',
+                partnerName: ctrl.partner?.displayName ?? '...',
+                days: ctrl.daysLinked,
               ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.lg,
-                    AppSpacing.xl,
-                    AppSpacing.lg,
-                    AppSpacing.md,
-                  ),
-                  child: Column(
-                    children: [
-                      DistanceCard(controller: ctrl),
-                      const SizedBox(height: AppSpacing.md),
-                      ReunionQuestCard(
-                                controller: ctrl,
-                                onPropose: () => showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (_) => ChangeNotifierProvider.value(
-                                    value: ctrl,
-                                    child: const ProposeQuestModal(),
-                                  ),
-                                ),
-                                onReview: () => showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (_) => ChangeNotifierProvider.value(
-                                    value: ctrl,
-                                    child: const ReviewQuestModal(),
-                                  ),
-                                ),
-                              ),
-                      const SizedBox(height: AppSpacing.lg),
-                    ],
-                  ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg, AppSpacing.xs, AppSpacing.lg + 4, AppSpacing.lg),
+                child: Column(
+                  children: [
+                    DistanceCard(controller: ctrl),
+                    const SizedBox(height: AppSpacing.lg),
+                    const _ChestTeaser(),
+                    ReunionQuestCard(
+                      controller: ctrl,
+                      onPropose: () => _openSheet(
+                          ctrl, const ProposeQuestModal(), form: true),
+                      onReview: () => _openSheet(ctrl, const ReviewQuestModal()),
+                    ),
+                  ],
                 ),
               ),
-              _BottomCTAs(),
+            ),
+            PixelActionBar(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: PixelButton(
+                      label: 'LOG MEMORY',
+                      icon: PixelIcons.heart,
+                      style: PixelButtonStyle.coral,
+                      onPressed: () => tabs.open(
+                        ShellTab.calendar,
+                        then: ShellAction.logToday,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: PixelButton(
+                      label: 'LOCK CHEST',
+                      icon: PixelIcons.lock,
+                      onPressed: () => tabs.open(
+                        ShellTab.vault,
+                        then: ShellAction.newChest,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The chest waiting for this player, or the next one to open.
+class _ChestTeaser extends StatelessWidget {
+  const _ChestTeaser();
+
+  @override
+  Widget build(BuildContext context) {
+    final vault = context.watch<VaultController>();
+    final chest = vault.highlight;
+    if (chest == null) return const SizedBox.shrink();
+    final waiting = vault.isWaitingForMe(chest);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+      child: PixelPressable(
+        onPressed: () => context.read<ShellTabs>().open(ShellTab.vault),
+        builder: (_, pressed) => Container(
+          padding: const EdgeInsets.all(AppSpacing.sm),
+          decoration: PixelRaised(
+            pressed: pressed,
+            outline: waiting ? AppColors.coral : AppColors.ink,
+          ),
+          child: Row(
+            children: [
+              SpriteIdle(
+                canHop: false,
+                child: const ChestImage(size: 48),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      waiting ? 'WAITING FOR YOUR TAP' : _opensIn(chest),
+                      style: AppTextStyles.label.copyWith(
+                        color: waiting ? AppColors.coral : AppColors.yellow,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      chest.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.button,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              const PixelIcon(PixelIcons.right, color: AppColors.gray),
             ],
           ),
         ),
-    );
-  }
-}
-
-class _HeaderBar extends StatelessWidget {
-  final String p1Name, p2Name;
-  const _HeaderBar({
-    required this.p1Name,
-    required this.p2Name,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.xxl,
-        AppSpacing.lg,
-        AppSpacing.md,
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.xxl,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.purple,
-        border: Border.all(color: Colors.black, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(4, 4), blurRadius: 0),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 3,
-            child: Row(
-              children: [
-                _playerMarker(AppColors.coral),
-                const SizedBox(width: AppSpacing.xs),
-                Expanded(
-                  child: Text(
-                    'P1  ${p1Name.toUpperCase()}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.body.copyWith(
-                      color: AppColors.coral,
-                      fontSize: 10,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.xs),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('\u2764\ufe0f', style: TextStyle(fontSize: 12)),
-              Text(
-                'LINKED',
-                style: AppTextStyles.caption.copyWith(fontSize: 8),
-              ),
-            ],
-          ),
-          const SizedBox(width: AppSpacing.xs),
-          Expanded(
-            flex: 3,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Flexible(
-                  child: Text(
-                    'P2  ${p2Name.toUpperCase()}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.right,
-                    style: AppTextStyles.body.copyWith(
-                      color: AppColors.cyan,
-                      fontSize: 10,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.xs),
-                _playerMarker(AppColors.cyan),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
 
-  Widget _playerMarker(Color color) => Container(
-    width: 20,
-    height: 20,
-    decoration: BoxDecoration(
-      color: color,
-      border: Border.all(color: Colors.black, width: 1),
-    ),
-  );
-}
-
-class _BottomCTAs extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.md,
-        AppSpacing.lg,
-        AppSpacing.xl,
-      ),
-      decoration: const BoxDecoration(
-        color: AppColors.navy,
-        border: Border(top: BorderSide(color: Colors.black, width: 2)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: PixelButton(
-              label: '[LOG MEMORY]',
-              onPressed: () =>
-                  context.read<ShellTabs>().open(ShellTab.calendar),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: PixelButton(
-              label: '[LOCK CHEST]',
-              style: PixelButtonStyle.outline,
-              backgroundColor: AppColors.charcoal,
-              onPressed: () => context.read<ShellTabs>().open(ShellTab.vault),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  static String _opensIn(CapsuleModel chest) =>
+      'OPENS IN ${ZingDateUtils.timeLeft(chest.unlockDate!)}';
 }

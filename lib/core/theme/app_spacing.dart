@@ -4,6 +4,9 @@ class AppSpacing {
   static const double sm = 8;
   static const double md = 12;
   static const double lg = 16;
-  static const double xl = 22;
-  static const double xxl = 28;
+  static const double xl = 24;
+  static const double xxl = 32;
+
+  /// The smallest comfortable touch target.
+  static const double touch = 48;
 }

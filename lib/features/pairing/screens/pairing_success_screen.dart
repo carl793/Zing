@@ -4,6 +4,9 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_icon.dart';
+import '../../../core/widgets/pixel_page.dart';
+import '../../../core/services/audio_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../data/repositories/couple_repository.dart';
 import '../../../data/repositories/user_repository.dart';
@@ -29,6 +32,9 @@ class _PairingSuccessScreenState extends State<PairingSuccessScreen> {
   @override
   void initState() {
     super.initState();
+    AudioService.instance
+      ..playSfx(AppSfx.unlock)
+      ..knock(strong: true);
     _loadNames();
   }
 
@@ -68,77 +74,78 @@ class _PairingSuccessScreenState extends State<PairingSuccessScreen> {
   }
 
   // Blank until loaded, so the default sprite doesn't flash first.
-  Widget _sprite(String spriteId) => _loaded
-      ? SpriteAvatar(spriteId: spriteId, size: 56)
-      : const SizedBox(width: 56, height: 56);
+  Widget _sprite(String spriteId, {bool offBeat = false}) => _loaded
+      ? SpriteIdle(
+          offBeat: offBeat,
+          child: SpriteAvatar(spriteId: spriteId, size: 96),
+        )
+      : const SizedBox.square(dimension: 96);
 
   @override
   Widget build(BuildContext context) {
+    final named = _loaded && _partnerName.isNotEmpty;
     return Scaffold(
-      backgroundColor: AppColors.navy,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.xl, vertical: AppSpacing.xxl),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Sprites + heart
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _sprite(_mySprite),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('❤️', style: TextStyle(fontSize: 28)),
+      backgroundColor: AppColors.night,
+      body: PixelBackdrop(
+        child: SafeArea(
+          child: PixelColumn(
+            child: Column(
+              children: [
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(AppSpacing.xl),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _sprite(_mySprite),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 8),
+                                child: PixelIcon(
+                                  PixelIcons.heart,
+                                  size: 36,
+                                  color: AppColors.coral,
+                                  shadow: true,
+                                ),
+                              ),
+                              _sprite(_partnerSprite, offBeat: true),
+                            ],
+                          ),
+                          const SizedBox(height: AppSpacing.xl),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              "YOU'RE LINKED!",
+                              style: AppTextStyles.display,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.lg),
+                          Text(
+                            named
+                                ? '$_myName and $_partnerName are now in the '
+                                    'same world.'
+                                : 'You are now in the same world.',
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.body,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  _sprite(_partnerSprite),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.xl),
-
-              // Title
-              Text(
-                'YOU\'RE LINKED!',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.header.copyWith(
-                  fontSize: 22,
-                  color: AppColors.yellow,
-                  shadows: [
-                    const Shadow(
-                        color: Colors.black,
-                        offset: Offset(4, 4),
-                        blurRadius: 0)
-                  ],
                 ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // Subtitle
-              if (_loaded && _partnerName.isNotEmpty)
-                Text(
-                  '$_myName & $_partnerName ARE NOW\nCONNECTED IN THE\nOVERWORLD.',
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.body
-                      .copyWith(color: AppColors.cyan, fontSize: 8, height: 1.8),
-                )
-              else
-                Text(
-                  'YOU ARE NOW CONNECTED\nIN THE OVERWORLD.',
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.body
-                      .copyWith(color: AppColors.cyan, fontSize: 8, height: 1.8),
+                PixelActionBar(
+                  child: PixelButton(
+                    label: 'ENTER THE OVERWORLD',
+                    icon: PixelIcons.play,
+                    onPressed: () => Navigator.of(context)
+                        .pushReplacementNamed(AppRoutes.shell),
+                  ),
                 ),
-              const SizedBox(height: AppSpacing.xxl),
-
-              PixelButton(
-                label: '[ ENTER OVERWORLD ]',
-                style: PixelButtonStyle.coral,
-                onPressed: () => Navigator.of(context)
-                    .pushReplacementNamed(AppRoutes.shell),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
