@@ -31,8 +31,51 @@ class CapsuleRepository {
             fromCache: snap.metadata.isFromCache,
           ));
 
-  Future<void> create(String coupleId, CapsuleModel capsule) => settleWrite(
-      _capsules(coupleId).doc(capsule.capsuleId).set(capsule.toMap()));
+  /// What is inside a chest. The rules only let its creator read this until the
+  /// chest is open.
+  DocumentReference<Json> _content(String coupleId, String id) =>
+      _capsules(coupleId).doc(id).collection('sealed').doc('content');
+
+  /// Seals a chest: its label and its content, together or not at all.
+  Future<void> create(
+    String coupleId,
+    CapsuleModel capsule,
+    CapsuleContent content,
+  ) {
+    final id = capsule.capsuleId;
+    final batch = _db.batch()
+      ..set(_capsules(coupleId).doc(id), capsule.toMap())
+      ..set(_content(coupleId, id), {
+        'creatorUid': capsule.creatorUid,
+        ...content.toMap(),
+      });
+    return settleWrite(batch.commit());
+  }
+
+  /// Reads what is inside. Throws permission-denied while it's still sealed.
+  Future<CapsuleContent> fetchContent(String coupleId, String id) async {
+    final snap = await onlineOnly(_content(coupleId, id).get());
+    final data = snap.data();
+    if (data == null) throw StateError('Chest $id has no content.');
+    return CapsuleContent.fromMap(data);
+  }
+
+  /// Moves content an older build stored in the chest itself inside it, where
+  /// the partner can't read it early. Only its creator may.
+  Future<void> moveContentInside(String coupleId, CapsuleModel capsule) {
+    final content = capsule.inlineContent;
+    if (content == null) return Future.value();
+    final id = capsule.capsuleId;
+    final batch = _db.batch()
+      ..set(_content(coupleId, id), {
+        'creatorUid': capsule.creatorUid,
+        ...content.toMap(),
+      })
+      ..update(_capsules(coupleId).doc(id), {
+        for (final field in CapsuleContent.fields) field: FieldValue.delete(),
+      });
+    return settleWrite(batch.commit());
+  }
 
   Future<void> unlock(String coupleId, String id) => _update(coupleId, id, {
         'status': CapsuleStatus.unlocked.name,

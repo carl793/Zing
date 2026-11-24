@@ -1,6 +1,7 @@
 import 'dart:async';
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../../app/session_controller.dart';
 import '../../../core/models/capsule_model.dart';
@@ -15,12 +16,18 @@ enum VaultSenderFilter { all, byYou, byPartner }
 enum VaultStatusFilter { all, unlocked, locked }
 
 /// The couple's chests: live list, filters, unlocking, and creating.
+///
+/// Lives in the shell rather than the Vault tab, so date chests open on time
+/// whichever tab is showing.
 class VaultController extends SafeNotifier {
   VaultController(this._session, this._capsules, this._storage) {
     _session.addListener(_onSession);
+    // Timers stop while the phone sleeps, so check again on return.
+    _lifecycle = AppLifecycleListener(onResume: checkDueUnlocks);
     _onSession();
   }
 
+  late final AppLifecycleListener _lifecycle;
   final SessionController _session;
   final CapsuleRepository _capsules;
   final StorageService _storage;
@@ -77,6 +84,7 @@ class VaultController extends SafeNotifier {
       _loadTimer?.cancel();
       notifyListeners();
       _scheduleUnlock();
+      if (!list.fromCache) _moveContentInside();
     }, onError: _fail);
   }
 
@@ -97,6 +105,36 @@ class VaultController extends SafeNotifier {
 
   CapsuleModel? capsuleById(String id) =>
       _all.where((c) => c.capsuleId == id).firstOrNull;
+
+  // ── Content ────────────────────────────────────────────────────────────
+
+  /// What is inside an open chest. Throws if it can't be read.
+  Future<CapsuleContent> loadContent(CapsuleModel capsule) async {
+    final inline = capsule.inlineContent;
+    if (inline != null) return inline;
+    final id = coupleId;
+    if (id == null) throw StateError(_notLinkedError);
+    return _capsules.fetchContent(id, capsule.capsuleId);
+  }
+
+  final Set<String> _moved = {};
+
+  /// Protects this player's sealed chests from older builds, once each.
+  void _moveContentInside() {
+    final id = coupleId;
+    if (id == null) return;
+    for (final chest in _all) {
+      if (chest.inlineContent == null ||
+          chest.status != CapsuleStatus.sealed ||
+          !isMyChest(chest) ||
+          !_moved.add(chest.capsuleId)) {
+        continue;
+      }
+      // If this fails the chest is simply left as it was.
+      _capsules.moveContentInside(id, chest).catchError(
+          (Object e) => debugPrint('Protecting a chest failed: $e'));
+    }
+  }
 
   // ── Filters ────────────────────────────────────────────────────────────
 
@@ -249,10 +287,12 @@ class VaultController extends SafeNotifier {
           triggerMode: trigger,
           unlockDate: isDate ? unlockDate : null,
           dualTapState: isDate ? null : DualTapState(),
+          createdAt: DateTime.now(),
+        ),
+        CapsuleContent(
           secretNote: secretNote,
           photoUrl: photoUrl,
           voiceNoteUrl: voiceUrl,
-          createdAt: DateTime.now(),
         ),
       ),
     );
@@ -310,6 +350,7 @@ class VaultController extends SafeNotifier {
   @override
   void dispose() {
     _session.removeListener(_onSession);
+    _lifecycle.dispose();
     _sub?.cancel();
     _unlockTimer?.cancel();
     _loadTimer?.cancel();

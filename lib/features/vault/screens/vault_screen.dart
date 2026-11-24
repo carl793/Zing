@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/models/capsule_model.dart';
-import '../../../app/session_controller.dart';
-import '../../../core/services/storage_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -11,7 +9,6 @@ import '../../../core/widgets/pixel_button.dart';
 import '../../../core/widgets/pixel_snack_bar.dart';
 import '../../../core/widgets/sprite_avatar.dart';
 import '../../../core/widgets/pixel_modal_shell.dart';
-import '../../../data/repositories/capsule_repository.dart';
 import '../controllers/vault_controller.dart';
 import '../modals/chest_locked_date_modal.dart';
 import '../modals/chest_locked_dualtap_modal.dart';
@@ -23,22 +20,6 @@ import '../widgets/vault_filter_bar.dart';
 
 class VaultScreen extends StatelessWidget {
   const VaultScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (ctx) => VaultController(
-        ctx.read<SessionController>(),
-        ctx.read<CapsuleRepository>(),
-        ctx.read<StorageService>(),
-      ),
-      child: const _VaultView(),
-    );
-  }
-}
-
-class _VaultView extends StatelessWidget {
-  const _VaultView();
 
   @override
   Widget build(BuildContext context) {
@@ -187,9 +168,9 @@ class _VaultView extends StatelessWidget {
     if (capsule.status == CapsuleStatus.unlocked) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ChangeNotifierProvider.value(
-            value: ctrl,
-            child: ChestUnlockedModal(capsule: capsule),
+          builder: (_) => ChestUnlockedModal(
+            capsule: capsule,
+            loadContent: () => ctrl.loadContent(capsule),
           ),
         ),
       );

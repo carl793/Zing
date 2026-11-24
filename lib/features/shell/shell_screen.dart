@@ -4,14 +4,17 @@ import 'package:provider/provider.dart';
 import '../../app/session_controller.dart';
 import '../../core/router/app_router.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/storage_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/pixel_nav_bar.dart';
 import '../../core/widgets/pixel_snack_bar.dart';
+import '../../data/repositories/capsule_repository.dart';
 import '../../data/repositories/couple_repository.dart';
 import '../../data/repositories/user_repository.dart';
 import '../calendar/screens/calendar_screen.dart';
 import '../dashboard/screens/dashboard_screen.dart';
 import '../settings/screens/settings_screen.dart';
+import '../vault/controllers/vault_controller.dart';
 import '../vault/screens/vault_screen.dart';
 import 'shell_tabs.dart';
 
@@ -28,6 +31,15 @@ class ShellScreen extends StatelessWidget {
             uid: ctx.read<AuthService>().currentUser!.uid,
             users: ctx.read<UserRepository>(),
             couples: ctx.read<CoupleRepository>(),
+          ),
+        ),
+        // Not lazy: chests must open on time even if the Vault is never shown.
+        ChangeNotifierProvider(
+          lazy: false,
+          create: (ctx) => VaultController(
+            ctx.read<SessionController>(),
+            ctx.read<CapsuleRepository>(),
+            ctx.read<StorageService>(),
           ),
         ),
         ChangeNotifierProvider(create: (_) => ShellTabs()),

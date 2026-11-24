@@ -175,7 +175,8 @@ void main() {
                 title: id,
                 triggerMode: CapsuleTriggerMode.dualTapSync,
                 dualTapState: DualTapState(),
-                createdAt: DateTime.now()));
+                createdAt: DateTime.now()),
+            const CapsuleContent(secretNote: 'hi', photoUrl: 'u'));
       }
       await repo.tap('c', 'd', isPlayerOne: true);
       await repo.cancel('c', 'x');
@@ -185,6 +186,28 @@ void main() {
       list = (await repo.watch('c').first).capsules;
       expect(list.single.status, CapsuleStatus.unlocked);
       expect(list.single.dualTapState!.bothTapped, isTrue);
+    });
+
+    test('content is stored apart from the chest', () async {
+      final repo = CapsuleRepository(db);
+      await repo.create(
+          'c',
+          CapsuleModel(
+              capsuleId: 'd',
+              creatorUid: 'alice',
+              title: 'd',
+              triggerMode: CapsuleTriggerMode.dateRelease,
+              unlockDate: DateTime(2030),
+              createdAt: DateTime.now()),
+          const CapsuleContent(secretNote: 'hi', photoUrl: 'u'));
+      final chest = (await db.doc('couples/c/capsules/d').get()).data()!;
+      for (final field in CapsuleContent.fields) {
+        expect(chest.containsKey(field), isFalse, reason: field);
+      }
+      final content = await repo.fetchContent('c', 'd');
+      expect(content.secretNote, 'hi');
+      expect(content.photoUrl, 'u');
+      expect(content.voiceNoteUrl, isNull);
     });
   });
 }

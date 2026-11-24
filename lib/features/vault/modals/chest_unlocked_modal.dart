@@ -1,4 +1,5 @@
 import 'package:audioplayers/audioplayers.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' show FirebaseException;
 import 'package:flutter/material.dart';
 
 import '../../../core/models/capsule_model.dart';
@@ -7,13 +8,22 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_error_box.dart';
 import '../../../core/widgets/pixel_snack_bar.dart';
 import '../../../core/widgets/remote_photo.dart';
 import 'photo_lightbox_screen.dart';
 
 class ChestUnlockedModal extends StatefulWidget {
   final CapsuleModel capsule;
-  const ChestUnlockedModal({super.key, required this.capsule});
+
+  /// Reads what is inside, which the server only allows once it's open.
+  final Future<CapsuleContent> Function() loadContent;
+
+  const ChestUnlockedModal({
+    super.key,
+    required this.capsule,
+    required this.loadContent,
+  });
 
   @override
   State<ChestUnlockedModal> createState() => _ChestUnlockedModalState();
@@ -30,6 +40,7 @@ class _ChestUnlockedModalState extends State<ChestUnlockedModal> {
   @override
   void initState() {
     super.initState();
+    _load();
     _lifecycle = AppLifecycleListener(onHide: () {
       if (_playerState == PlayerState.playing) _player.pause();
     });
@@ -48,6 +59,35 @@ class _ChestUnlockedModalState extends State<ChestUnlockedModal> {
     _player.onDurationChanged.listen((d) {
       if (mounted) setState(() => _duration = d);
     });
+  }
+
+  CapsuleContent? _content;
+  String? _loadError;
+
+  Future<void> _load() async {
+    CapsuleContent? content;
+    String? error;
+    try {
+      content = await widget.loadContent();
+    } on FirebaseException catch (e) {
+      debugPrint('Opening the chest failed: $e');
+      error = e.code == 'permission-denied'
+          ? "THIS CHEST ISN'T READY YET. TRY AGAIN IN A MOMENT."
+          : "COULDN'T OPEN THE CHEST. CHECK YOUR INTERNET.";
+    } catch (e) {
+      debugPrint('Opening the chest failed: $e');
+      error = "COULDN'T OPEN THE CHEST. CHECK YOUR INTERNET.";
+    }
+    if (!mounted) return;
+    setState(() {
+      _content = content;
+      _loadError = error;
+    });
+  }
+
+  void _retry() {
+    setState(() => _loadError = null);
+    _load();
   }
 
   bool _holdingMusic = false;
@@ -69,7 +109,7 @@ class _ChestUnlockedModalState extends State<ChestUnlockedModal> {
   }
 
   Future<void> _togglePlay() async {
-    final url = widget.capsule.voiceNoteUrl;
+    final url = _content?.voiceNoteUrl;
     if (url == null) return;
 
     try {
@@ -115,9 +155,9 @@ class _ChestUnlockedModalState extends State<ChestUnlockedModal> {
   @override
   Widget build(BuildContext context) {
     final capsule = widget.capsule;
-    final hasPhoto = capsule.photoUrl != null && capsule.photoUrl!.isNotEmpty;
-    final hasVoice =
-        capsule.voiceNoteUrl != null && capsule.voiceNoteUrl!.isNotEmpty;
+    final content = _content;
+    final photoUrl = content?.photoUrl;
+    final hasVoice = content?.voiceNoteUrl != null;
 
     return Scaffold(
       backgroundColor: AppColors.navy,
@@ -187,14 +227,31 @@ class _ChestUnlockedModalState extends State<ChestUnlockedModal> {
               const SizedBox(height: AppSpacing.lg),
 
               // Hidden photo
-              if (hasPhoto) ...[
+              if (content == null) ...[
+                if (_loadError == null)
+                  const Center(
+                    child: CircularProgressIndicator(color: AppColors.yellow),
+                  )
+                else ...[
+                  PixelErrorBox(message: _loadError!),
+                  const SizedBox(height: AppSpacing.md),
+                  PixelButton(
+                    label: '[ RETRY ]',
+                    style: PixelButtonStyle.yellow,
+                    onPressed: _retry,
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.lg),
+              ],
+
+              if (photoUrl != null) ...[
                 Text('HIDDEN PHOTO', style: AppTextStyles.label),
                 const SizedBox(height: 6),
                 GestureDetector(
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) =>
-                          PhotoLightboxScreen(url: capsule.photoUrl!),
+                          PhotoLightboxScreen(url: photoUrl),
                     ),
                   ),
                   child: Container(
@@ -212,7 +269,7 @@ class _ChestUnlockedModalState extends State<ChestUnlockedModal> {
                     ),
                     child: Stack(
                       children: [
-                        Positioned.fill(child: RemotePhoto(capsule.photoUrl!)),
+                        Positioned.fill(child: RemotePhoto(photoUrl)),
                         Positioned(
                           right: 8,
                           bottom: 8,
@@ -234,23 +291,25 @@ class _ChestUnlockedModalState extends State<ChestUnlockedModal> {
               ],
 
               // Secret note
-              Text('SECRET NOTE', style: AppTextStyles.label),
-              const SizedBox(height: 6),
-              _insetBox(
-                child: Text(
-                  capsule.secretNote.isEmpty
-                      ? '(NO NOTE WRITTEN)'
-                      : capsule.secretNote,
-                  style: AppTextStyles.body.copyWith(
-                    color: capsule.secretNote.isEmpty
-                        ? AppColors.gray
-                        : AppColors.cyan,
-                    fontSize: 8,
-                    height: 1.7,
+              if (content != null) ...[
+                Text('SECRET NOTE', style: AppTextStyles.label),
+                const SizedBox(height: 6),
+                _insetBox(
+                  child: Text(
+                    content.secretNote.isEmpty
+                        ? '(NO NOTE WRITTEN)'
+                        : content.secretNote,
+                    style: AppTextStyles.body.copyWith(
+                      color: content.secretNote.isEmpty
+                          ? AppColors.gray
+                          : AppColors.cyan,
+                      fontSize: 8,
+                      height: 1.7,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
+                const SizedBox(height: AppSpacing.lg),
+              ],
 
               // Voice note
               if (hasVoice) ...[

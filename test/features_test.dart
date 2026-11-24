@@ -22,6 +22,7 @@ import 'package:zing/features/dashboard/widgets/distance_card.dart';
 import 'package:zing/features/settings/controllers/settings_controller.dart';
 import 'package:zing/features/settings/screens/settings_screen.dart';
 import 'package:zing/features/vault/controllers/vault_controller.dart';
+import 'package:zing/features/vault/modals/chest_unlocked_modal.dart';
 import 'package:zing/features/vault/screens/vault_screen.dart';
 
 /// A phone whose location answers are set by the test.
@@ -246,6 +247,56 @@ void main() {
       expect(await ctrl.cancelCapsule(ctrl.capsules.single), isNotNull);
       ctrl.dispose();
     });
+
+    test('moves older sealed content inside, only for my own chests', () async {
+      await setUpCouple();
+      final later = Timestamp.fromDate(DateTime.now().add(const Duration(days: 1)));
+      const old = {'secretNote': 'hi', 'photoUrl': 'u', 'voiceNoteUrl': null};
+      await chest('mine', {'unlockDate': later, ...old});
+      await chest('theirs', {'unlockDate': later, 'creatorUid': 'you', ...old});
+      await chest('opened', {'status': 'unlocked', ...old});
+      final ctrl =
+          VaultController(session, CapsuleRepository(db), StorageService());
+      await settle();
+      await settle();
+      expect(ctrl.capsuleById('mine')!.inlineContent, isNull);
+      expect((await ctrl.loadContent(ctrl.capsuleById('mine')!)).secretNote, 'hi');
+      expect(ctrl.capsuleById('theirs')!.inlineContent, isNotNull);
+      expect((await ctrl.loadContent(ctrl.capsuleById('opened')!)).photoUrl, 'u');
+      ctrl.dispose();
+    });
+
+    testWidgets('opened chest shows its content, or an error and a retry',
+        (tester) async {
+      var attempts = 0;
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.dark,
+        home: ChestUnlockedModal(
+          capsule: CapsuleModel(
+            capsuleId: 'x',
+            creatorUid: 'me',
+            title: 'X',
+            triggerMode: CapsuleTriggerMode.dateRelease,
+            status: CapsuleStatus.unlocked,
+            createdAt: DateTime.now(),
+          ),
+          loadContent: () async {
+            if (attempts++ == 0) {
+              throw FirebaseException(plugin: 'x', code: 'permission-denied');
+            }
+            return const CapsuleContent(secretNote: 'SURPRISE');
+          },
+        ),
+      ));
+      await tester.pump();
+      expect(find.textContaining("ISN'T READY"), findsOneWidget);
+      expect(find.text('SURPRISE'), findsNothing);
+      await tester.ensureVisible(find.text('[ RETRY ]'));
+      await tester.tap(find.text('[ RETRY ]'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('SURPRISE'), findsOneWidget);
+    });
   });
 
   group('calendar', () {
@@ -336,7 +387,10 @@ void main() {
             Provider.value(value: users),
             Provider.value(value: couples),
             Provider.value(value: MemoryRepository(db)),
-            Provider.value(value: CapsuleRepository(db)),
+            ChangeNotifierProvider(
+              create: (_) => VaultController(
+                  session, CapsuleRepository(db), StorageService()),
+            ),
             Provider.value(value: StorageService()),
             Provider<LocationService>.value(value: location),
           ],

@@ -89,6 +89,82 @@ service cloud.firestore {
         && request.resource.data.get('unlinkedByUid', null) == request.auth.uid;
     }
 
+    // ── chests ──────────────────────────────────────────────────────────
+
+    function capsuleData(coupleId, capsuleId) {
+      return get(/databases/$(database)/documents/couples/$(coupleId)/capsules/$(capsuleId)).data;
+    }
+
+    function capsuleDataAfter(coupleId, capsuleId) {
+      return getAfter(/databases/$(database)/documents/couples/$(coupleId)/capsules/$(capsuleId)).data;
+    }
+
+    // Opened, or a date chest whose date has come by the server's clock. The
+    // phone's clock is never trusted.
+    function isOpen(chest) {
+      return chest.status == 'unlocked'
+        || (chest.status == 'sealed'
+            && chest.triggerMode == 'dateRelease'
+            && request.time >= chest.unlockDate);
+    }
+
+    // A new chest starts sealed and untapped. Its date may already be past:
+    // one sealed offline can reach the server after it was due.
+    function isFreshlySealed() {
+      let chest = request.resource.data;
+      return chest.status == 'sealed'
+        && chest.get('dualTapState', {}).size() == 0
+        && (chest.triggerMode == 'dualTapSync'
+            || (chest.triggerMode == 'dateRelease' && chest.unlockDate is timestamp));
+    }
+
+    function opensByDate() {
+      return resource.data.status == 'sealed'
+        && resource.data.triggerMode == 'dateRelease'
+        && request.time >= resource.data.unlockDate
+        && changesOnly(['status', 'openedAt'])
+        && request.resource.data.status == 'unlocked';
+    }
+
+    // A partner records their own tap, and opens the chest only when both
+    // taps are there. Player one is the couple's first member.
+    function isTapping(coupleId) {
+      let before = resource.data.get('dualTapState', {});
+      let after = request.resource.data.get('dualTapState', {});
+      let mine = coupleData(coupleId).memberUids[0] == request.auth.uid
+        ? 'p1TappedAt' : 'p2TappedAt';
+      return resource.data.status == 'sealed'
+        && resource.data.triggerMode == 'dualTapSync'
+        && changesOnly(['dualTapState', 'status', 'openedAt'])
+        && after.diff(before).affectedKeys().hasOnly([mine])
+        && after.get(mine, null) is timestamp
+        && (unchanged(['status', 'openedAt'])
+            || (request.resource.data.status == 'unlocked'
+                && after.get('p1TappedAt', null) is timestamp
+                && after.get('p2TappedAt', null) is timestamp));
+    }
+
+    function creatorCancelsChest() {
+      return resource.data.creatorUid == request.auth.uid
+        && resource.data.status == 'sealed'
+        && request.resource.data.status == 'cancelled'
+        && changesOnly(['status']);
+    }
+
+    function isArchiving() {
+      return changesOnly(['isArchived']) && request.resource.data.isArchived is bool;
+    }
+
+    // Chests sealed by older builds hold their content in the chest itself.
+    // Their creator may move it inside, in one step.
+    function movesContentInside(coupleId, capsuleId) {
+      return resource.data.creatorUid == request.auth.uid
+        && resource.data.status == 'sealed'
+        && changesOnly(['secretNote', 'photoUrl', 'voiceNoteUrl'])
+        && !request.resource.data.keys().hasAny(['secretNote', 'photoUrl', 'voiceNoteUrl'])
+        && existsAfter(/databases/$(database)/documents/couples/$(coupleId)/capsules/$(capsuleId)/sealed/content);
+    }
+
     // ── users ───────────────────────────────────────────────────────────
     // Your own profile and your partner's. Profiles are only ever read by
     // id; listing them would expose every account's email and location.
@@ -148,17 +224,35 @@ service cloud.firestore {
         }
       }
 
-      // Still permissive about status changes: these are tightened together
-      // with the vault rewrite, which moves sealed content out of the chest
-      // document and checks unlock transitions here.
+      // A chest: its title, how it opens, and whether it has. Both partners
+      // see this; what is inside lives in sealed/content below.
       match /capsules/{capsuleId} {
         allow read: if isCoupleMember(coupleId);
         allow create: if isCoupleMember(coupleId)
-          && request.resource.data.creatorUid == request.auth.uid;
+          && request.resource.data.creatorUid == request.auth.uid
+          && isFreshlySealed();
         allow update: if isCoupleMember(coupleId)
-          && unchanged(['creatorUid', 'createdAt']);
+          && (opensByDate()
+              || isTapping(coupleId)
+              || creatorCancelsChest()
+              || isArchiving()
+              || movesContentInside(coupleId, capsuleId));
         allow delete: if isCoupleMember(coupleId)
           && resource.data.creatorUid == request.auth.uid;
+
+        // What is sealed inside. The creator can always read it; the partner
+        // only once the chest is open. It can't be changed after sealing.
+        match /sealed/content {
+          allow get: if isCoupleMember(coupleId)
+            && (resource.data.creatorUid == request.auth.uid
+                || isOpen(capsuleData(coupleId, capsuleId)));
+          allow create: if isCoupleMember(coupleId)
+            && request.resource.data.creatorUid == request.auth.uid
+            && request.resource.data.keys().hasOnly(
+                 ['creatorUid', 'secretNote', 'photoUrl', 'voiceNoteUrl'])
+            && capsuleDataAfter(coupleId, capsuleId).creatorUid == request.auth.uid
+            && capsuleDataAfter(coupleId, capsuleId).status == 'sealed';
+        }
       }
 
       match /monthlyRecaps/{recapId} {

@@ -234,7 +234,8 @@ describe('memories, comments, capsules', () => {
   test('capsules: one whereIn query is enough for the vault', async () => {
     const path = 'couples/c1/capsules/x';
     await assertSucceeds(setDoc(doc(db('alice'), path), {
-      creatorUid: 'alice', status: 'sealed', createdAt: serverTimestamp(),
+      creatorUid: 'alice', status: 'sealed', triggerMode: 'dualTapSync',
+      createdAt: serverTimestamp(),
     }));
     await assertSucceeds(getDocs(query(
       collection(db('bob'), 'couples/c1/capsules'),
