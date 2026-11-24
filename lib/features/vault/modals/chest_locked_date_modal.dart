@@ -39,12 +39,17 @@ class _ChestLockedDateModalState extends State<ChestLockedDateModal> {
     if (unlock == null) return;
     final now = DateTime.now();
     if (!unlock.isAfter(now)) {
-      context.read<VaultController>().refreshDueUnlocks();
+      context.read<VaultController>().checkDueUnlocks();
     }
     final sealed = widget.capsule.createdAt;
     final total = unlock.difference(sealed).inSeconds;
     final remaining = unlock.difference(now);
     if (!mounted) return;
+    // The display has no seconds, so redraw only when its minute changes.
+    if (_remaining != Duration.zero &&
+        remaining.inMinutes == _remaining.inMinutes) {
+      return;
+    }
     setState(() {
       _remaining = remaining.isNegative ? Duration.zero : remaining;
       final elapsed = total - remaining.inSeconds;

@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
+import 'pixel_button.dart';
 
 /// Branded launch screen shown while the signed-in destination is resolved.
 class SplashScreen extends StatefulWidget {
@@ -28,24 +29,53 @@ class _SplashScreenState extends State<SplashScreen>
     _continueToApp();
   }
 
+  bool _failed = false;
+
   Future<void> _continueToApp() async {
-    String route;
+    final String route;
     try {
       final results = await Future.wait<String>([
         widget.resolveRoute(context),
-        Future<void>.delayed(const Duration(milliseconds: 900)).then(
+        // Long enough for the logo to land, short enough not to be in the way.
+        Future<void>.delayed(const Duration(milliseconds: 600)).then(
           (_) => '',
         ),
       ]);
       route = results.first;
     } catch (error) {
+      // Signed in but unreachable: offer a retry rather than the login screen.
       debugPrint('Could not resolve launch destination: $error');
-      route = '/welcome';
+      if (mounted) setState(() => _failed = true);
+      return;
     }
 
     if (!mounted) return;
     Navigator.of(context).pushReplacementNamed(route);
   }
+
+  void _retry() {
+    setState(() => _failed = false);
+    _continueToApp();
+  }
+
+  Widget _failure() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+        child: Column(
+          children: [
+            Text(
+              "COULDN'T CONNECT.\nCHECK YOUR INTERNET.",
+              textAlign: TextAlign.center,
+              style: AppTextStyles.body.copyWith(color: AppColors.amber),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            PixelButton(
+              label: '[ RETRY ]',
+              style: PixelButtonStyle.yellow,
+              onPressed: _retry,
+            ),
+          ],
+        ),
+      );
 
   @override
   void dispose() {
@@ -116,6 +146,7 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ),
             const SizedBox(height: AppSpacing.xl),
+            if (_failed) _failure() else ...[
             Row(
               mainAxisSize: MainAxisSize.min,
               children: List.generate(3, (index) {
@@ -150,6 +181,7 @@ class _SplashScreenState extends State<SplashScreen>
                 letterSpacing: 1,
               ),
             ),
+            ],
           ],
         ),
       ),

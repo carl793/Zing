@@ -15,6 +15,7 @@ enum AuthErrorType {
   tooManyAttempts,
   network,
   googleFailed,
+  googleUnavailable,
   unknown,
 }
 
@@ -62,7 +63,7 @@ class AuthController extends ChangeNotifier {
       _fail(e.code == 'unavailable' ? AuthErrorType.network : AuthErrorType.unknown);
     } on PlatformException catch (e) {
       // google_sign_in reports its own failures as platform exceptions.
-      _fail(_fromGoogleCode(e.code));
+      _fail(_fromGoogle(e));
     } catch (e) {
       debugPrint('Sign-in failed: $e');
       _fail(google ? AuthErrorType.googleFailed : AuthErrorType.unknown);
@@ -92,9 +93,18 @@ class AuthController extends ChangeNotifier {
         _ => AuthErrorType.unknown,
       };
 
-  static AuthErrorType _fromGoogleCode(String code) => switch (code) {
-        'sign_in_canceled' || 'canceled' => AuthErrorType.none,
-        'network_error' => AuthErrorType.network,
-        _ => AuthErrorType.googleFailed,
-      };
+  /// Google's own codes for services that are missing (1), outdated (2),
+  /// disabled (3) or invalid (9), as on phones sold without them.
+  static final _noGoogleServices = RegExp(r'ApiException: (1|2|3|9)\b');
+
+  static AuthErrorType _fromGoogle(PlatformException e) {
+    if (_noGoogleServices.hasMatch(e.message ?? '')) {
+      return AuthErrorType.googleUnavailable;
+    }
+    return switch (e.code) {
+      'sign_in_canceled' || 'canceled' => AuthErrorType.none,
+      'network_error' => AuthErrorType.network,
+      _ => AuthErrorType.googleFailed,
+    };
+  }
 }

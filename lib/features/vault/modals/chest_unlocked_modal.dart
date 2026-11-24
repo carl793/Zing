@@ -2,10 +2,13 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/capsule_model.dart';
+import '../../../core/services/audio_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_snack_bar.dart';
+import '../../../core/widgets/remote_photo.dart';
 import 'photo_lightbox_screen.dart';
 
 class ChestUnlockedModal extends StatefulWidget {
@@ -22,11 +25,22 @@ class _ChestUnlockedModalState extends State<ChestUnlockedModal> {
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
 
+  late final AppLifecycleListener _lifecycle;
+
   @override
   void initState() {
     super.initState();
+    _lifecycle = AppLifecycleListener(onHide: () {
+      if (_playerState == PlayerState.playing) _player.pause();
+    });
     _player.onPlayerStateChanged.listen((s) {
-      if (mounted) setState(() => _playerState = s);
+      if (!mounted) return;
+      // The music steps aside for the voice note.
+      _holdMusic(s == PlayerState.playing);
+      setState(() {
+        _playerState = s;
+        if (s == PlayerState.completed) _position = Duration.zero;
+      });
     });
     _player.onPositionChanged.listen((p) {
       if (mounted) setState(() => _position = p);
@@ -36,8 +50,20 @@ class _ChestUnlockedModalState extends State<ChestUnlockedModal> {
     });
   }
 
+  bool _holdingMusic = false;
+
+  void _holdMusic(bool hold) {
+    if (hold == _holdingMusic) return;
+    _holdingMusic = hold;
+    hold
+        ? AudioService.instance.holdMusic()
+        : AudioService.instance.releaseMusic();
+  }
+
   @override
   void dispose() {
+    _holdMusic(false);
+    _lifecycle.dispose();
     _player.dispose();
     super.dispose();
   }
@@ -46,10 +72,24 @@ class _ChestUnlockedModalState extends State<ChestUnlockedModal> {
     final url = widget.capsule.voiceNoteUrl;
     if (url == null) return;
 
-    if (_playerState == PlayerState.playing) {
-      await _player.pause();
-    } else {
-      await _player.play(UrlSource(url));
+    try {
+      if (_playerState == PlayerState.playing) {
+        await _player.pause();
+      } else if (_playerState == PlayerState.paused) {
+        await _player.resume();
+      } else {
+        await _player
+            .play(UrlSource(url))
+            .timeout(const Duration(seconds: 20));
+      }
+    } catch (e) {
+      debugPrint('Voice note playback failed: $e');
+      if (!mounted) return;
+      showPixelSnackBar(
+        context,
+        "COULDN'T PLAY THE VOICE NOTE. CHECK YOUR INTERNET.",
+        color: AppColors.coral,
+      );
     }
   }
 
@@ -147,82 +187,51 @@ class _ChestUnlockedModalState extends State<ChestUnlockedModal> {
               const SizedBox(height: AppSpacing.lg),
 
               // Hidden photo
-              Text('HIDDEN PHOTO', style: AppTextStyles.label),
-              const SizedBox(height: 6),
-              GestureDetector(
-                onTap: hasPhoto
-                    ? () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                PhotoLightboxScreen(url: capsule.photoUrl!),
-                          ),
-                        )
-                    : null,
-                child: Container(
-                  height: 180,
-                  decoration: BoxDecoration(
-                    color: AppColors.charcoal,
-                    border: Border.all(color: Colors.black, width: 2),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black,
-                        offset: Offset(3, 3),
-                        blurRadius: 0,
-                      ),
-                    ],
+              if (hasPhoto) ...[
+                Text('HIDDEN PHOTO', style: AppTextStyles.label),
+                const SizedBox(height: 6),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          PhotoLightboxScreen(url: capsule.photoUrl!),
+                    ),
                   ),
-                  child: hasPhoto
-                      ? Stack(
-                          children: [
-                            Positioned.fill(
-                              child: Image.network(
-                                capsule.photoUrl!,
-                                fit: BoxFit.cover,
-                                loadingBuilder: (ctx, child, progress) =>
-                                    progress == null
-                                        ? child
-                                        : const Center(
-                                            child: CircularProgressIndicator(
-                                              color: AppColors.yellow,
-                                            ),
-                                          ),
-                                errorBuilder: (_, _, _) => const Center(
-                                  child: Icon(
-                                    Icons.broken_image,
-                                    color: AppColors.gray,
-                                    size: 32,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              right: 8,
-                              bottom: 8,
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                color: Colors.black54,
-                                child: const Icon(
-                                  Icons.fullscreen,
-                                  color: AppColors.cyan,
-                                  size: 16,
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      : Center(
-                          child: Text(
-                            '[ REVEALED PHOTO\nATTACHMENT ]',
-                            textAlign: TextAlign.center,
-                            style: AppTextStyles.caption.copyWith(
-                              color: AppColors.gray,
-                              fontSize: 6,
+                  child: Container(
+                    height: 180,
+                    decoration: BoxDecoration(
+                      color: AppColors.charcoal,
+                      border: Border.all(color: Colors.black, width: 2),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(3, 3),
+                          blurRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(child: RemotePhoto(capsule.photoUrl!)),
+                        Positioned(
+                          right: 8,
+                          bottom: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            color: Colors.black54,
+                            child: const Icon(
+                              Icons.fullscreen,
+                              color: AppColors.cyan,
+                              size: 16,
                             ),
                           ),
                         ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
+                const SizedBox(height: AppSpacing.lg),
+              ],
 
               // Secret note
               Text('SECRET NOTE', style: AppTextStyles.label),

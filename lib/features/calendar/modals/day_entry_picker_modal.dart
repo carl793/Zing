@@ -9,6 +9,7 @@ import '../../../core/utils/date_utils.dart';
 import '../../../core/widgets/attribution_tag.dart';
 import '../../../core/widgets/pixel_button.dart';
 import '../../../core/widgets/pixel_modal_shell.dart';
+import '../../../core/widgets/remote_photo.dart';
 import '../controllers/calendar_controller.dart';
 
 /// What the user chose in the picker.
@@ -104,15 +105,7 @@ class _EntryCard extends StatelessWidget {
               ),
               clipBehavior: Clip.hardEdge,
               child: entry.photoUrls.isNotEmpty
-                  ? Image.network(
-                      entry.photoUrls.first,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const Icon(
-                        Icons.broken_image,
-                        size: 16,
-                        color: AppColors.gray,
-                      ),
-                    )
+                  ? RemotePhoto(entry.photoUrls.first)
                   : const Icon(Icons.photo_camera, size: 16, color: AppColors.gray),
             ),
             const SizedBox(width: AppSpacing.md),

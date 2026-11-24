@@ -1,40 +1,48 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
-/// Wraps Firebase Auth + Google Sign-In. Registered as a singleton via Provider.
+import '../../data/repositories/user_repository.dart';
+
+/// Wraps Firebase Auth and Google Sign-In.
 class AuthService {
+  AuthService(this._users);
+
+  final UserRepository _users;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   User? get currentUser => _auth.currentUser;
 
-  Future<UserCredential> registerWithEmail({required String email, required String password}) async {
-    final cred = await _auth.createUserWithEmailAndPassword(email: email, password: password);
-    await _createUserDocIfMissing(cred.user!, authProvider: 'password');
-    return cred;
+  Future<void> registerWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    await _auth.createUserWithEmailAndPassword(email: email, password: password);
+    await _tryEnsureProfile();
   }
 
-  Future<UserCredential> loginWithEmail({required String email, required String password}) {
-    return _auth.signInWithEmailAndPassword(email: email, password: password);
-  }
+  Future<void> loginWithEmail({
+    required String email,
+    required String password,
+  }) =>
+      _auth.signInWithEmailAndPassword(email: email, password: password);
 
-  Future<UserCredential> signInWithGoogle() async {
+  Future<void> signInWithGoogle() async {
     final googleUser = await _googleSignIn.signIn();
-    if (googleUser == null) throw FirebaseAuthException(code: 'sign-in-cancelled');
+    if (googleUser == null) {
+      throw FirebaseAuthException(code: 'sign-in-cancelled');
+    }
     final googleAuth = await googleUser.authentication;
-    final credential = GoogleAuthProvider.credential(
+    await _auth.signInWithCredential(GoogleAuthProvider.credential(
       accessToken: googleAuth.accessToken,
       idToken: googleAuth.idToken,
-    );
-    final userCred = await _auth.signInWithCredential(credential);
-    await _createUserDocIfMissing(userCred.user!, authProvider: 'google');
-    return userCred;
+    ));
+    await _tryEnsureProfile();
   }
 
-  Future<void> sendPasswordResetEmail(String email) => _auth.sendPasswordResetEmail(email: email);
+  Future<void> sendPasswordResetEmail(String email) =>
+      _auth.sendPasswordResetEmail(email: email);
 
   Future<void> logout() async {
     try {
@@ -45,40 +53,26 @@ class AuthService {
     await _auth.signOut();
   }
 
-  Future<bool> hasCompletedProfile(String uid) async {
-    final doc = await _firestore.collection('users').doc(uid).get();
-    final name = doc.data()?['displayName'] as String?;
-    return name != null && name.isNotEmpty;
-  }
-
-  /// Saves the onboarding profile, first creating the profile document if
-  /// sign-up couldn't (e.g. the connection dropped right after registering).
-  Future<void> saveProfile({required String uid, required String displayName, required String avatarSpriteId}) async {
+  /// Creates this account's profile document if it doesn't exist yet.
+  Future<void> ensureProfile() async {
     final user = _auth.currentUser;
-    if (user != null && user.uid == uid) {
-      await _createUserDocIfMissing(user, authProvider: _providerOf(user));
-    }
-    await _firestore.collection('users').doc(uid).set({
-      'displayName': displayName,
-      'avatarSpriteId': avatarSpriteId,
-    }, SetOptions(merge: true));
+    if (user == null) return;
+    final isGoogle =
+        user.providerData.any((p) => p.providerId == 'google.com');
+    await _users.createIfMissing(
+      uid: user.uid,
+      email: user.email ?? '',
+      authProvider: isGoogle ? 'google' : 'password',
+    );
   }
 
-  static String _providerOf(User user) =>
-      user.providerData.any((p) => p.providerId == 'google.com') ? 'google' : 'password';
-
-  Future<void> _createUserDocIfMissing(User user, {required String authProvider}) async {
-    final ref = _firestore.collection('users').doc(user.uid);
-    if (!(await ref.get()).exists) {
-      await ref.set({
-        'email': user.email ?? '',
-        'displayName': '',
-        'avatarSpriteId': '',
-        'authProvider': authProvider,
-        'coupleId': null,
-        'locationEnabled': false,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+  /// The account itself is already signed in here, so a failed profile write
+  /// must not look like a failed sign-in. Onboarding ensures it again.
+  Future<void> _tryEnsureProfile() async {
+    try {
+      await ensureProfile();
+    } catch (e) {
+      debugPrint('Creating the profile failed: $e');
     }
   }
 }

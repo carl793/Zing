@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/models/memory_model.dart';
-import '../../../core/services/auth_service.dart';
-import '../../../core/services/firestore_service.dart';
+import '../../../app/session_controller.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../core/widgets/pixel_error_box.dart';
 import '../../../core/widgets/pixel_modal_shell.dart';
+import '../../../data/repositories/memory_repository.dart';
 import '../controllers/calendar_controller.dart';
 import '../modals/add_memory_modal.dart';
 import '../modals/day_entry_picker_modal.dart';
@@ -26,13 +27,12 @@ class CalendarScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final uid = context.read<AuthService>().currentUser!.uid;
     return ChangeNotifierProvider(
       create: (ctx) => CalendarController(
-        ctx.read<FirestoreService>(),
+        ctx.read<SessionController>(),
+        ctx.read<MemoryRepository>(),
         ctx.read<StorageService>(),
-        myUid: uid,
-      )..init(),
+      ),
       child: const _CalendarView(),
     );
   }
@@ -74,6 +74,18 @@ class _CalendarView extends StatelessWidget {
                 onLabelTap: () => _openMonthPicker(context, ctrl),
               ),
               const SizedBox(height: AppSpacing.lg),
+              if (ctrl.loadFailed) ...[
+                const PixelErrorBox(
+                  message: "COULDN'T LOAD YOUR CALENDAR. CHECK YOUR INTERNET.",
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                PixelButton(
+                  label: '[ RETRY ]',
+                  style: PixelButtonStyle.outline,
+                  onPressed: ctrl.retry,
+                ),
+                const SizedBox(height: AppSpacing.lg),
+              ],
               _CalendarGrid(
                 controller: ctrl,
                 onDayTap: (date) => _openDay(context, ctrl, date),

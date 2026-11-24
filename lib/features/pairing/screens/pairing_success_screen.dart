@@ -5,10 +5,10 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pixel_button.dart';
 import '../../../core/router/app_router.dart';
-import '../../../core/services/firestore_service.dart';
+import '../../../data/repositories/couple_repository.dart';
+import '../../../data/repositories/user_repository.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/constants/sprite_options.dart';
-import '../../../core/models/couple_model.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/widgets/sprite_avatar.dart';
 
@@ -34,27 +34,18 @@ class _PairingSuccessScreenState extends State<PairingSuccessScreen> {
 
   Future<void> _loadNames() async {
     final auth = context.read<AuthService>();
-    final fs = context.read<FirestoreService>();
+    final users = context.read<UserRepository>();
+    final couples = context.read<CoupleRepository>();
     final uid = auth.currentUser!.uid;
 
     UserModel? me;
     UserModel? partner;
     try {
-      final mySnap = await fs.doc('users/$uid').get();
-      me = UserModel.fromMap(uid, mySnap.data() ?? const <String, dynamic>{});
-      final coupleId = me.coupleId;
-      if (coupleId != null && coupleId.isNotEmpty) {
-        final coupleData = (await fs.doc('couples/$coupleId').get()).data();
-        final partnerUid = coupleData == null
-            ? ''
-            : CoupleModel.fromMap(coupleId, coupleData).partnerUid(uid);
-        if (partnerUid.isNotEmpty) {
-          final partnerData = (await fs.doc('users/$partnerUid').get()).data();
-          if (partnerData != null) {
-            partner = UserModel.fromMap(partnerUid, partnerData);
-          }
-        }
-      }
+      me = await users.fetch(uid);
+      final coupleId = me?.coupleId ?? '';
+      final couple = coupleId.isEmpty ? null : await couples.fetch(coupleId);
+      final partnerUid = couple?.partnerUid(uid) ?? '';
+      if (partnerUid.isNotEmpty) partner = await users.fetch(partnerUid);
     } catch (e) {
       // The celebration still shows; only the names and sprites are missing.
       debugPrint('Loading the paired profiles failed: $e');

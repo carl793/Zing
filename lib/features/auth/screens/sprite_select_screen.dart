@@ -8,6 +8,7 @@ import '../../../core/widgets/onboarding_progress_bar.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/constants/sprite_options.dart';
+import '../../../data/repositories/user_repository.dart';
 import '../../../core/widgets/pixel_error_box.dart';
 import '../../../core/widgets/sprite_selector.dart';
 
@@ -53,9 +54,12 @@ class _SpriteSelectScreenState extends State<SpriteSelectScreen> {
       _error = null;
     });
     final authService = context.read<AuthService>();
+    final users = context.read<UserRepository>();
     try {
-      await authService.saveProfile(
-        uid: authService.currentUser!.uid,
+      // Sign-up may not have managed to create the profile.
+      await authService.ensureProfile();
+      await users.saveProfile(
+        authService.currentUser!.uid,
         displayName: name,
         avatarSpriteId: _selectedSprite,
       );
@@ -121,11 +125,13 @@ class _SpriteSelectScreenState extends State<SpriteSelectScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: TextField(
                     controller: _name,
+                    maxLength: 20,
                     textCapitalization: TextCapitalization.characters,
                     style: AppTextStyles.body.copyWith(color: AppColors.yellow, fontSize: 9),
                     cursorColor: AppColors.cyan,
                     decoration: InputDecoration(
                       hintText: 'YOUR NAME..',
+                      counterText: '',
                       hintStyle: AppTextStyles.body.copyWith(color: const Color(0xFF555577), fontSize: 8),
                       border: InputBorder.none,
                       isDense: true,

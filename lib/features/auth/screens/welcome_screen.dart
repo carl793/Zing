@@ -9,8 +9,6 @@ import '../../../core/widgets/pixel_button.dart';
 import '../../../core/widgets/pixel_error_box.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/router/app_router.dart';
-import '../../../core/services/auth_service.dart';
-import '../../../core/services/firestore_service.dart';
 import '../controllers/auth_controller.dart';
 import '../widgets/auth_error_banner.dart';
 
@@ -96,10 +94,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     if (!mounted) return;
     final String route;
     try {
-      route = await AppRouter.resolveDestination(
-        auth: context.read<AuthService>(),
-        firestore: context.read<FirestoreService>(),
-      );
+      route = await AppRouter.resolveDestination(context);
     } catch (e) {
       debugPrint('Routing after sign-in failed: $e');
       if (mounted) {

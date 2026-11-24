@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import '../../../core/services/firestore_service.dart';
 import '../../../core/models/room_model.dart';
+import '../../../core/utils/safe_notifier.dart';
+import '../../../data/repositories/pairing_repository.dart';
+import '../../../data/repositories/user_repository.dart';
 
 enum PairingTab { create, join }
 
@@ -10,11 +12,12 @@ enum CreateState { idle, loading, waiting }
 
 enum JoinError { none, notFound, expired, alreadyLinked, selfJoin, network }
 
-class PairingController extends ChangeNotifier {
-  final FirestoreService _fs;
+class PairingController extends SafeNotifier {
+  final PairingRepository _pairing;
+  final UserRepository _users;
   final String currentUid;
 
-  PairingController(this._fs, {required this.currentUid});
+  PairingController(this._pairing, this._users, {required this.currentUid});
 
   // --- Tab ---
   PairingTab tab = PairingTab.create;
@@ -32,25 +35,30 @@ class PairingController extends ChangeNotifier {
   Duration _remaining = const Duration(hours: 24);
   Timer? _countdownTimer;
   bool linked = false;
-  String? partnerDisplayName;
 
   Future<void> generateCode() async {
     createState = CreateState.loading;
     notifyListeners();
     try {
-      generatedCode = await _fs.createRoom(currentUid);
+      createFailed = false;
+      generatedCode = await _pairing.createRoom(currentUid);
       createState = CreateState.waiting;
       _startCountdown();
       _listenForPartner();
       notifyListeners();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Creating a room failed: $e');
+      createFailed = true;
       createState = CreateState.idle;
       notifyListeners();
     }
   }
 
+  /// True when the last attempt to create a code failed.
+  bool createFailed = false;
+
   void _startCountdown() {
-    _remaining = const Duration(hours: 24);
+    _remaining = PairingRepository.codeLifetime;
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_remaining.inSeconds <= 0) {
@@ -71,7 +79,7 @@ class PairingController extends ChangeNotifier {
 
   void _listenForPartner() {
     _roomSub?.cancel();
-    _roomSub = _fs.streamRoom(generatedCode!).listen((room) async {
+    _roomSub = _pairing.watchRoom(generatedCode!).listen((room) async {
       if (room?.status != RoomStatus.linked || linked || _claiming) return;
       _claiming = true;
       _countdownTimer?.cancel();
@@ -82,7 +90,7 @@ class PairingController extends ChangeNotifier {
       _claiming = false;
       linked = true;
       notifyListeners();
-    });
+    }, onError: (Object e) => debugPrint('Room stream error: $e'));
   }
 
   bool _claiming = false;
@@ -92,7 +100,7 @@ class PairingController extends ChangeNotifier {
   Future<void> _claimCouple(String? coupleId) async {
     if (coupleId == null || coupleId.isEmpty) return;
     try {
-      await _fs.claimCoupleId(uid: currentUid, coupleId: coupleId);
+      await _users.setCoupleId(currentUid, coupleId);
     } catch (e) {
       debugPrint('claimCoupleId failed: $e');
     }
@@ -104,8 +112,16 @@ class PairingController extends ChangeNotifier {
   }
 
   Future<void> cancelRoom() async {
-    if (generatedCode != null) await _fs.cancelRoom(generatedCode!);
+    final code = generatedCode;
     _roomSub?.cancel();
+    if (code != null) {
+      try {
+        await _pairing.cancelRoom(code);
+      } catch (e) {
+        // It expires on its own; don't trap the player on this code.
+        debugPrint('Cancelling the room failed: $e');
+      }
+    }
     _countdownTimer?.cancel();
     generatedCode = null;
     createState = CreateState.idle;
@@ -133,13 +149,8 @@ class PairingController extends ChangeNotifier {
     joinError = JoinError.none;
     notifyListeners();
 
-    JoinRoomResult result;
-    try {
-      result = await _fs.joinRoom(code: code, joinerUid: currentUid);
-    } catch (e) {
-      debugPrint('joinRoom threw: $e');
-      result = JoinRoomResult.error;
-    }
+    final result =
+        await _pairing.joinRoom(code: code, joinerUid: currentUid);
 
     joinLoading = false;
     switch (result) {

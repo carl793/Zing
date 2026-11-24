@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/services/auth_service.dart';
-import '../../../core/services/couple_service.dart';
-import '../../../core/services/firestore_service.dart';
+import '../../../app/session_controller.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/pixel_button.dart';
+import '../../../data/repositories/couple_repository.dart';
+import '../../../data/repositories/memory_repository.dart';
+import '../../../data/repositories/user_repository.dart';
 import '../../shell/shell_tabs.dart';
 import '../controllers/dashboard_controller.dart';
 import '../modals/propose_quest_modal.dart';
@@ -21,38 +22,58 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final uid = context.read<AuthService>().currentUser!.uid;
     return ChangeNotifierProvider(
       create: (ctx) => DashboardController(
-        ctx.read<FirestoreService>(),
-        ctx.read<LocationService>(),
-        ctx.read<CoupleService>(),
-        myUid: uid,
-      )..init(),
+        session: ctx.read<SessionController>(),
+        users: ctx.read<UserRepository>(),
+        couples: ctx.read<CoupleRepository>(),
+        memories: ctx.read<MemoryRepository>(),
+        location: ctx.read<LocationService>(),
+      ),
       child: const _DashboardView(),
     );
   }
 }
 
-class _DashboardView extends StatelessWidget {
+class _DashboardView extends StatefulWidget {
   const _DashboardView();
+
+  @override
+  State<_DashboardView> createState() => _DashboardViewState();
+}
+
+class _DashboardViewState extends State<_DashboardView> {
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    // Also picks up access that was just changed in the phone's settings.
+    _lifecycle = AppLifecycleListener(
+      onResume: () => context
+          .read<DashboardController>()
+          .refreshLocation(onlyIfStale: true),
+    );
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final ctrl = context.watch<DashboardController>();
 
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
+    return Scaffold(
         backgroundColor: AppColors.navy,
         body: SafeArea(
           child: Column(
             children: [
               _HeaderBar(
                 p1Name: ctrl.me?.displayName ?? '...',
-                p1Sprite: ctrl.me?.avatarSpriteId ?? '👤',
                 p2Name: ctrl.partner?.displayName ?? '...',
-                p2Sprite: ctrl.partner?.avatarSpriteId ?? '👤',
               ),
               Expanded(
                 child: SingleChildScrollView(
@@ -96,18 +117,15 @@ class _DashboardView extends StatelessWidget {
             ],
           ),
         ),
-      ),
     );
   }
 }
 
 class _HeaderBar extends StatelessWidget {
-  final String p1Name, p1Sprite, p2Name, p2Sprite;
+  final String p1Name, p2Name;
   const _HeaderBar({
     required this.p1Name,
-    required this.p1Sprite,
     required this.p2Name,
-    required this.p2Sprite,
   });
 
   @override

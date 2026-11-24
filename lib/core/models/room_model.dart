@@ -29,7 +29,8 @@ class RoomModel {
           (s) => s.name == (data['status'] ?? 'pending'),
           orElse: () => RoomStatus.pending,
         ),
-        createdAt: (data['createdAt'] as Timestamp).toDate(),
+        // Null until the server fills it in on a just-created room.
+        createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
         expiresAt: (data['expiresAt'] as Timestamp).toDate(),
         coupleId: data['coupleId'] as String?,
       );

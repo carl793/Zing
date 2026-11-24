@@ -1,82 +1,106 @@
+import 'package:cloud_firestore/cloud_firestore.dart' show GeoPoint;
 import 'package:flutter/foundation.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 
-import 'firestore_service.dart';
+/// Whether this app may read the phone's position right now.
+enum LocationAccess {
+  granted,
 
+  /// Not granted yet; the system prompt can still be shown.
+  denied,
+
+  /// The system won't prompt again; only the app settings can grant it.
+  blocked,
+
+  /// Location is switched off for the whole phone.
+  serviceOff,
+}
+
+/// Device location and city lookup. Knows nothing about profiles.
 class LocationService {
-  final FirestoreService _fs;
-  final Geocoding _geocoding = Geocoding();
-  LocationService(this._fs);
+  static double distanceKm(GeoPoint a, GeoPoint b) =>
+      Geolocator.distanceBetween(
+        a.latitude,
+        a.longitude,
+        b.latitude,
+        b.longitude,
+      ) /
+      1000;
 
-  /// Returns distance in km between two GeoPoints.
-  static double distanceBetween(GeoPoint a, GeoPoint b) {
-    return Geolocator.distanceBetween(
-          a.latitude,
-          a.longitude,
-          b.latitude,
-          b.longitude,
-        ) /
-        1000;
-  }
-
-  Future<bool> requestPermission() async {
-    if (!await Geolocator.isLocationServiceEnabled()) return false;
-    LocationPermission perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied) {
-      perm = await Geolocator.requestPermission();
-    }
-    return perm == LocationPermission.whileInUse ||
-        perm == LocationPermission.always;
-  }
-
-  /// Gets current GPS position and writes it to Firestore.
-  Future<GeoPoint?> updateCurrentLocation(String uid) async {
+  /// Current access. With [request], shows the system prompt if it still can.
+  Future<LocationAccess> access({bool request = false}) async {
     try {
-      final LocationSettings settings = defaultTargetPlatform == TargetPlatform.android
-          ? AndroidSettings(
-              accuracy: LocationAccuracy.medium,
-              forceLocationManager: true,
-              timeLimit: const Duration(seconds: 20),
-            )
-          : const LocationSettings(
-              accuracy: LocationAccuracy.medium,
-              timeLimit: Duration(seconds: 20),
-            );
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: settings,
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return LocationAccess.serviceOff;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (request && permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      return switch (permission) {
+        LocationPermission.whileInUse ||
+        LocationPermission.always =>
+          LocationAccess.granted,
+        LocationPermission.deniedForever => LocationAccess.blocked,
+        _ => LocationAccess.denied,
+      };
+    } catch (e) {
+      debugPrint('Checking location access failed: $e');
+      return LocationAccess.denied;
+    }
+  }
+
+  /// The phone's position, or its last known one when a fix takes too long.
+  /// Null when neither is available.
+  Future<GeoPoint?> currentPosition() async {
+    const accuracy = LocationAccuracy.medium;
+    const limit = Duration(seconds: 20);
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        // The plain Android location manager also works on phones without
+        // Google services (e.g. recent Huawei models).
+        locationSettings: isAndroid
+            ? AndroidSettings(
+                accuracy: accuracy,
+                forceLocationManager: true,
+                timeLimit: limit,
+              )
+            : const LocationSettings(accuracy: accuracy, timeLimit: limit),
       );
-      final gp = GeoPoint(pos.latitude, pos.longitude);
-      await _fs.updateDoc('users/$uid', {
-        'currentLocation': gp,
-        'currentLocationUpdatedAt': FieldValue.serverTimestamp(),
-        'locationEnabled': true,
-      });
-      return gp;
+      return GeoPoint(position.latitude, position.longitude);
+    } catch (e) {
+      debugPrint('Getting a position failed: $e');
+    }
+    try {
+      final last = await Geolocator.getLastKnownPosition(
+        forceAndroidLocationManager: isAndroid,
+      );
+      return last == null ? null : GeoPoint(last.latitude, last.longitude);
     } catch (_) {
       return null;
     }
   }
 
-  /// Turns the user's saved city into an approximate coordinate for the
-  /// dashboard fallback. Uses the platform geocoder, so no API key is stored.
-  Future<GeoPoint?> geocodeHomeCity(String city) async {
+  /// Approximate coordinates of a typed city, or null when it isn't found or
+  /// this phone has no city lookup.
+  Future<GeoPoint?> findCity(String city) async {
     final query = city.trim();
     if (query.isEmpty) return null;
     try {
-      final matches = await _geocoding.locationFromAddress(query)
+      final matches = await Geocoding()
+          .locationFromAddress(query)
           .timeout(const Duration(seconds: 12));
       if (matches.isEmpty) return null;
       return GeoPoint(matches.first.latitude, matches.first.longitude);
     } catch (e) {
-      debugPrint('Home city geocoding failed: $e');
+      debugPrint('City lookup failed: $e');
       return null;
     }
   }
 
-  Future<void> disableLocation(String uid) => _fs.updateDoc('users/$uid', {
-    'locationEnabled': false,
-    'currentLocation': null,
-  });
+  Future<void> openAppSettings() => Geolocator.openAppSettings();
+
+  Future<void> openLocationSettings() => Geolocator.openLocationSettings();
 }

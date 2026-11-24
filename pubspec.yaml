@@ -56,6 +56,7 @@ dev_dependencies:
   # package. See that file for information about deactivating lint rules
   # and activating additional rules.
   flutter_lints: ^6.0.0
+  fake_cloud_firestore: ^4.4.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -68,10 +69,21 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
-    - assets/fonts/
-    - assets/audio/
-    - assets/images/
-    - assets/sprites/
+    # Listed one by one, so source files kept in these folders don't ship.
+    - assets/audio/591777__bloodpixelhero__atmospheric-loop-25 (1).mp3
+    - assets/images/zing_logo.svg
+    - assets/sprites/mecha_rabbit.svg
+    - assets/sprites/mecha_rabbit_96.png
+    - assets/sprites/monster_guy.svg
+    - assets/sprites/monster_guy_96.png
+    - assets/sprites/mystery_box.svg
+    - assets/sprites/mystery_box_96.png
+    - assets/sprites/pixelArt-0.png
+    - assets/sprites/pixelArt-1.svg
+    - assets/sprites/pixelArt-12.svg
+    - assets/sprites/pixelArt-15.svg
+    - assets/sprites/pixelArt-2.svg
+    - assets/sprites/pixelArt-4.svg
 
   fonts:
     - family: Press Start 2P

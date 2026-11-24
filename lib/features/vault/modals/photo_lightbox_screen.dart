@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/remote_photo.dart';
 
 /// Full-screen photo viewer pushed as a new route (pure black background).
 class PhotoLightboxScreen extends StatelessWidget {
@@ -52,41 +53,9 @@ class PhotoLightboxScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   border: Border.all(color: AppColors.cyan, width: 2),
                 ),
-                child: Image.network(
-                  url,
-                  fit: BoxFit.contain,
-                  width: double.infinity,
-                  height: double.infinity,
-                  loadingBuilder: (ctx, child, progress) => progress == null
-                      ? child
-                      : const Center(
-                          child: CircularProgressIndicator(
-                            color: AppColors.yellow,
-                          ),
-                        ),
-                  errorBuilder: (_, _, _) => const Center(
-                    child: Icon(
-                      Icons.broken_image,
-                      color: AppColors.gray,
-                      size: 40,
-                    ),
-                  ),
+                child: InteractiveViewer(
+                  child: RemotePhoto(url, fit: BoxFit.contain),
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '◄   PHOTO 1 OF 1   ►',
-                    style: AppTextStyles.caption.copyWith(
-                      color: AppColors.cyan,
-                      fontSize: 7,
-                    ),
-                  ),
-                ],
               ),
             ),
           ],

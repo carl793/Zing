@@ -1,16 +1,12 @@
-import 'dart:async';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/session_controller.dart';
 import '../../../core/constants/sprite_options.dart';
-import '../../../core/models/couple_model.dart';
-import '../../../core/models/user_model.dart';
+import '../../../core/permissions/permission_flows.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/services/audio_service.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../core/services/couple_service.dart';
-import '../../../core/services/firestore_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -19,37 +15,44 @@ import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/pixel_button.dart';
 import '../../../core/widgets/pixel_snack_bar.dart';
 import '../../../core/widgets/sprite_selector.dart';
-import '../../../core/services/audio_service.dart';
+import '../../../data/repositories/couple_repository.dart';
+import '../../../data/repositories/user_repository.dart';
+import '../controllers/settings_controller.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (ctx) => SettingsController(
+        session: ctx.read<SessionController>(),
+        users: ctx.read<UserRepository>(),
+        couples: ctx.read<CoupleRepository>(),
+        location: ctx.read<LocationService>(),
+      ),
+      child: const _SettingsView(),
+    );
+  }
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
-  UserModel? _me;
-  CoupleModel? _couple;
-  bool _loading = true;
-  bool _saving = false;
+class _SettingsView extends StatefulWidget {
+  const _SettingsView();
 
-  late TextEditingController _nameCtrl;
-  late TextEditingController _cityCtrl;
+  @override
+  State<_SettingsView> createState() => _SettingsViewState();
+}
+
+class _SettingsViewState extends State<_SettingsView> {
+  final _nameCtrl = TextEditingController();
+  final _cityCtrl = TextEditingController();
   String? _selectedSprite;
-  int _cityResolveSequence = 0;
+
+  /// The form is filled once, then belongs to the player until saved.
+  bool _filled = false;
 
   bool _bgmOn = AudioService.instance.bgmEnabled;
   bool _sfxOn = AudioService.instance.sfxEnabled;
-  bool _alertsOn = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _nameCtrl = TextEditingController();
-    _cityCtrl = TextEditingController();
-    _load();
-  }
 
   @override
   void dispose() {
@@ -58,150 +61,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    final auth = context.read<AuthService>();
-    final fs = context.read<FirestoreService>();
-    final uid = auth.currentUser!.uid;
-    final mySnap = await fs.doc('users/$uid').get();
-    final me = UserModel.fromMap(uid, mySnap.data()!);
-    _me = me;
+  void _fill(SettingsController ctrl) {
+    final me = ctrl.me;
+    if (_filled || me == null) return;
+    _filled = true;
     _nameCtrl.text = me.displayName;
     _cityCtrl.text = me.homeCity;
-    _selectedSprite = me.avatarSpriteId.isNotEmpty
-        ? me.avatarSpriteId
-        : SpriteOptions.all.first;
-
-    if (me.coupleId != null) {
-      final cSnap = await fs.doc('couples/${me.coupleId}').get();
-      if (cSnap.exists) {
-        _couple = CoupleModel.fromMap(cSnap.id, cSnap.data()!);
-        _alertsOn = _couple!.settings.reunionAlerts;
-      }
-    }
-    setState(() => _loading = false);
+    _selectedSprite =
+        me.avatarSpriteId.isEmpty ? SpriteOptions.fallback : me.avatarSpriteId;
   }
 
-  Future<void> _saveProfile() async {
-    final name = _nameCtrl.text.trim();
-    if (name.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.coral,
-            content: Text(
-              'NAME CANNOT BE EMPTY.',
-              style: AppTextStyles.caption.copyWith(color: AppColors.yellow),
-            ),
-            duration: const Duration(seconds: 2),
-          ),
+  /// Shows the message a controller action returned, if it failed.
+  Future<void> _report(Future<String?> action) async {
+    final error = await action;
+    if (error != null && mounted) {
+      showPixelSnackBar(context, error, color: AppColors.coral);
+    }
+  }
+
+  Future<void> _save(SettingsController ctrl) async {
+    FocusScope.of(context).unfocus();
+    final error = await ctrl.saveProfile(
+      name: _nameCtrl.text.trim(),
+      spriteId: _selectedSprite ?? SpriteOptions.fallback,
+      city: _cityCtrl.text.trim(),
+      onCityNotFound: () {
+        if (!mounted) return;
+        showPixelSnackBar(
+          context,
+          "CITY SAVED, BUT IT COULDN'T BE FOUND ON THE MAP. "
+          'TRY "CITY, COUNTRY".',
+          color: AppColors.amber,
         );
-      }
-      return;
-    }
-    final fs = context.read<FirestoreService>();
-    final uid = _me!.uid;
-    setState(() => _saving = true);
-    var saveSucceeded = true;
-    final city = _cityCtrl.text.trim();
-    final cityChanged = city.toLowerCase() != _me!.homeCity.toLowerCase();
-    final sprite = _selectedSprite ?? SpriteOptions.all.first;
-    try {
-      final updates = <String, dynamic>{
-        'displayName': name,
-        'avatarSpriteId': sprite,
-        'homeCity': city,
-        if (cityChanged) 'homeLocation': FieldValue.delete(),
-      };
-      await fs.updateDoc('users/$uid', updates);
-      _me = UserModel.fromMap(uid, {
-        ..._me!.toMap(),
-        ...updates,
-        if (cityChanged) 'homeLocation': null,
-      });
-    } catch (e) {
-      debugPrint('Settings save error: $e');
-      saveSucceeded = false;
-    }
-    if (mounted) setState(() => _saving = false);
-
-    if (saveSucceeded &&
-        city.isNotEmpty &&
-        (cityChanged || _me!.homeLocation == null)) {
-      final sequence = ++_cityResolveSequence;
-      unawaited(_resolveHomeCity(uid, city, sequence));
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.purple,
-          content: Text(
-            !saveSucceeded
-                ? 'COULD NOT SAVE SETTINGS. TRY AGAIN.'
-                : 'SETTINGS SAVED.',
-            style: AppTextStyles.caption.copyWith(color: AppColors.yellow),
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
+      },
+    );
+    if (!mounted) return;
+    showPixelSnackBar(
+      context,
+      error ?? 'SETTINGS SAVED.',
+      color: error == null ? AppColors.yellow : AppColors.coral,
+    );
   }
 
-  Future<void> _resolveHomeCity(String uid, String city, int sequence) async {
-    final service = context.read<LocationService>();
-    final location = await service.geocodeHomeCity(city);
-    if (location == null ||
-        !mounted ||
-        sequence != _cityResolveSequence ||
-        _cityCtrl.text.trim().toLowerCase() != city.toLowerCase()) {
-      return;
-    }
-    try {
-      await context.read<FirestoreService>().updateDoc('users/$uid', {
-        'homeLocation': location,
-      });
-      if (!mounted || sequence != _cityResolveSequence) return;
-      _me = UserModel.fromMap(uid, {
-        ..._me!.toMap(),
-        'homeCity': city,
-        'homeLocation': location,
-      });
-    } catch (e) {
-      debugPrint('Saving home city coordinates failed: $e');
-    }
+  Future<void> _toggleLocation(SettingsController ctrl, bool on) async {
+    if (!on) return _report(ctrl.stopSharingLocation());
+    final granted =
+        await ensureLocationAccess(context, context.read<LocationService>());
+    if (granted) await _report(ctrl.shareLocation());
   }
 
-  Future<void> _toggleBgm(bool val) async {
-    setState(() => _bgmOn = val);
-    await AudioService.instance.setBgmEnabled(val);
+  void _toggleBgm(bool on) {
+    setState(() => _bgmOn = on);
+    AudioService.instance.setBgmEnabled(on);
   }
 
-  Future<void> _toggleSfx(bool val) async {
-    setState(() => _sfxOn = val);
-    await AudioService.instance.setSfxEnabled(val);
+  void _toggleSfx(bool on) {
+    setState(() => _sfxOn = on);
+    AudioService.instance.setSfxEnabled(on);
   }
 
-  Future<void> _toggleAlerts(bool val) async {
-    final coupleId = _me?.coupleId;
-    if (coupleId == null) return;
-    final fs = context.read<FirestoreService>();
-    setState(() => _alertsOn = val);
-    try {
-      await fs.updateDoc('couples/$coupleId', {'settings.reunionAlerts': val});
-    } catch (e) {
-      debugPrint('Saving reunion alerts failed: $e');
-      if (!mounted) return;
-      setState(() => _alertsOn = !val);
-      showPixelSnackBar(context, 'COULD NOT SAVE ALERTS. TRY AGAIN.',
-          color: AppColors.coral);
-    }
-  }
-
-  Future<void> _unlink() async {
-    final me = _me;
-    final coupleId = me?.coupleId;
-    if (me == null || coupleId == null) return;
-    final couples = context.read<CoupleService>();
+  Future<void> _unlink(SettingsController ctrl) async {
     final confirmed = await showConfirmDialog(
       context: context,
       message:
@@ -210,32 +129,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
       confirmLabel: '[ YES, UNLINK ]',
       cancelLabel: '[ KEEP LINKED ]',
     );
-    if (!confirmed || !mounted) return;
-    try {
-      // CoupleLinkGuard moves both phones to pairing once this lands.
-      await couples.unlink(coupleId: coupleId, myUid: me.uid);
-    } catch (e) {
-      debugPrint('Unlink failed: $e');
-      if (mounted) {
-        showPixelSnackBar(context, 'COULD NOT UNLINK. CHECK YOUR CONNECTION.',
-            color: AppColors.coral);
-      }
-    }
+    if (confirmed) await _report(ctrl.unlink());
   }
 
   Future<void> _logout() async {
     final auth = context.read<AuthService>();
     final navigator = Navigator.of(context);
-    await auth.logout();
+    try {
+      await auth.logout();
+    } catch (e) {
+      debugPrint('Logout failed: $e');
+      if (mounted) {
+        showPixelSnackBar(context, "COULDN'T LOG OUT. TRY AGAIN.",
+            color: AppColors.coral);
+      }
+      return;
+    }
     navigator.pushNamedAndRemoveUntil(AppRoutes.welcome, (_) => false);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(
+    final ctrl = context.watch<SettingsController>();
+    _fill(ctrl);
+    final couple = ctrl.couple;
+
+    if (!_filled) {
+      return Scaffold(
         backgroundColor: AppColors.navy,
-        body: Center(child: CircularProgressIndicator(color: AppColors.yellow)),
+        body: Center(
+          child: ctrl.loadFailed
+              ? Text(
+                  "COULDN'T LOAD SETTINGS.\nRETRYING...",
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.body.copyWith(color: AppColors.amber),
+                )
+              : const CircularProgressIndicator(color: AppColors.yellow),
+        ),
       );
     }
 
@@ -296,6 +226,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _ToggleRow(
+                      label: 'SHARE MY LOCATION',
+                      value: ctrl.isSharingLocation,
+                      onChanged: (on) => _toggleLocation(ctrl, on),
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      'ONLY YOUR PARTNER SEES IT. TURNING THIS OFF ERASES YOUR '
+                      'LAST POSITION.',
+                      style: AppTextStyles.caption.copyWith(
+                        color: AppColors.gray,
+                        fontSize: 7,
+                        height: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
                     Text(
                       'HOME CITY (LOCATION FALLBACK)',
                       style: AppTextStyles.label,
@@ -320,14 +266,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           _UnitChip(
                             label: 'KM',
-                            active: (_couple?.unitPref ?? 'km') == 'km',
-                            onTap: () => _setUnit('km'),
+                            active: ctrl.unit == 'km',
+                            onTap: () => _report(ctrl.setUnit('km')),
                           ),
                           const SizedBox(width: 8),
                           _UnitChip(
                             label: 'MI',
-                            active: (_couple?.unitPref ?? 'km') == 'mi',
-                            onTap: () => _setUnit('mi'),
+                            active: ctrl.unit == 'mi',
+                            onTap: () => _report(ctrl.setUnit('mi')),
                           ),
                         ],
                       ),
@@ -356,8 +302,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: AppSpacing.sm),
                     _ToggleRow(
                       label: 'REUNION COUNTDOWN ALERTS',
-                      value: _alertsOn,
-                      onChanged: _toggleAlerts,
+                      value: ctrl.alertsOn,
+                      onChanged: (on) => _report(ctrl.setAlerts(on)),
                     ),
                   ],
                 ),
@@ -365,7 +311,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: AppSpacing.lg),
 
               // ── Room info ──
-              if (_me?.coupleId != null && _couple != null)
+              if (couple != null)
                 _Section(
                   title: 'ROOM INFO',
                   child: Column(
@@ -386,7 +332,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              _couple!.pairingCode,
+                              couple.pairingCode,
                               style: AppTextStyles.body.copyWith(
                                 fontSize: 10,
                                 color: Colors.white,
@@ -409,9 +355,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               // ── Save button ──
               PixelButton(
-                label: _saving ? 'SAVING...' : '[ SAVE SETTINGS ]',
+                label: ctrl.saving ? 'SAVING...' : '[ SAVE SETTINGS ]',
                 style: PixelButtonStyle.yellow,
-                onPressed: _saving ? null : _saveProfile,
+                onPressed: ctrl.saving ? null : () => _save(ctrl),
               ),
               const SizedBox(height: AppSpacing.xl),
 
@@ -426,7 +372,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       label: '[ UNLINK PARTNER ROOM ]',
                       style: PixelButtonStyle.outlineDanger,
                       backgroundColor: AppColors.charcoal,
-                      onPressed: _unlink,
+                      onPressed: () => _unlink(ctrl),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     PixelButton(label: '[ LOGOUT ]', onPressed: _logout),
@@ -439,22 +385,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _setUnit(String unit) async {
-    final previous = _couple;
-    if (previous == null || previous.unitPref == unit) return;
-    final fs = context.read<FirestoreService>();
-    setState(() => _couple = previous.copyWith(unitPref: unit));
-    try {
-      await fs.updateDoc('couples/${previous.coupleId}', {'unitPref': unit});
-    } catch (e) {
-      debugPrint('Saving unit preference failed: $e');
-      if (!mounted) return;
-      setState(() => _couple = previous);
-      showPixelSnackBar(context, 'COULD NOT SAVE THE UNIT. TRY AGAIN.',
-          color: AppColors.coral);
-    }
   }
 }
 
@@ -518,6 +448,7 @@ class _InsetTextField extends StatelessWidget {
       child: TextField(
         controller: controller,
         textCapitalization: TextCapitalization.characters,
+        maxLength: 40,
         style: AppTextStyles.body.copyWith(
           color: AppColors.yellow,
           fontSize: 8,
@@ -525,6 +456,7 @@ class _InsetTextField extends StatelessWidget {
         cursorColor: AppColors.cyan,
         decoration: InputDecoration(
           hintText: hint,
+          counterText: '',
           hintStyle: AppTextStyles.body.copyWith(
             color: const Color(0xFF555577),
             fontSize: 8,

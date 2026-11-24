@@ -1,11 +1,12 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/tag_categories.dart';
 import '../../../core/models/memory_model.dart';
+import '../../../core/permissions/permission_flows.dart';
+import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -15,6 +16,7 @@ import '../../../core/widgets/pixel_dashed_border.dart';
 import '../../../core/widgets/pixel_error_box.dart';
 import '../../../core/widgets/pixel_inset_field.dart';
 import '../../../core/widgets/pixel_modal_shell.dart';
+import '../../../core/widgets/remote_photo.dart';
 import '../controllers/calendar_controller.dart';
 import '../widgets/tag_picker_dialog.dart';
 
@@ -39,7 +41,6 @@ class AddMemoryModal extends StatefulWidget {
 }
 
 class _AddMemoryModalState extends State<AddMemoryModal> {
-  final _picker = ImagePicker();
   final _title = TextEditingController();
   final _location = TextEditingController();
   final _story = TextEditingController();
@@ -78,20 +79,12 @@ class _AddMemoryModalState extends State<AddMemoryModal> {
 
   Future<void> _pickPhoto() async {
     if (_slots.length >= CalendarController.maxPhotos) return;
-    try {
-      final file = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 70,
-        maxWidth: 1600,
-      );
-      if (file == null) return;
-      final bytes = await file.readAsBytes();
-      if (!mounted) return;
-      setState(() => _slots.add(_PhotoSlot.local(bytes)));
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _error = "COULDN'T OPEN YOUR GALLERY.");
-    }
+    final bytes = await pickPhoto(
+      context,
+      settings: context.read<LocationService>(),
+    );
+    if (bytes == null || !mounted) return;
+    setState(() => _slots.add(_PhotoSlot.local(bytes)));
   }
 
   void _removeSlot(int index) => setState(() => _slots.removeAt(index));
@@ -166,14 +159,8 @@ class _AddMemoryModalState extends State<AddMemoryModal> {
                 border: Border.all(color: Colors.black, width: 2),
               ),
               child: slot.bytes != null
-                  ? Image.memory(slot.bytes!, fit: BoxFit.cover)
-                  : Image.network(
-                      slot.url!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const Center(
-                        child: Icon(Icons.broken_image, color: AppColors.gray),
-                      ),
-                    ),
+                  ? Image.memory(slot.bytes!, fit: BoxFit.cover, cacheWidth: 300)
+                  : RemotePhoto(slot.url!),
             ),
           ),
           Positioned(

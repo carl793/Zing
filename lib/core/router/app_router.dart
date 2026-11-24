@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../data/repositories/pairing_repository.dart';
+import '../../data/repositories/user_repository.dart';
 import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/sprite_select_screen.dart';
 import '../../features/auth/screens/welcome_screen.dart';
@@ -8,18 +10,17 @@ import '../../features/pairing/screens/pairing_screen.dart';
 import '../../features/pairing/screens/pairing_success_screen.dart';
 import '../../features/shell/shell_screen.dart';
 import '../services/auth_service.dart';
-import '../services/firestore_service.dart';
 import '../widgets/splash_screen.dart';
 
 class AppRoutes {
   AppRoutes._();
-  static const launch         = '/';
-  static const welcome       = '/welcome';
-  static const spriteSelect  = '/sprite-select';
-  static const forgotPassword= '/forgot-password';
-  static const pairing       = '/pairing';
-  static const pairingSuccess= '/pairing-success';
-  static const shell         = '/shell';
+  static const launch = '/';
+  static const welcome = '/welcome';
+  static const spriteSelect = '/sprite-select';
+  static const forgotPassword = '/forgot-password';
+  static const pairing = '/pairing';
+  static const pairingSuccess = '/pairing-success';
+  static const shell = '/shell';
 }
 
 class AppRouter {
@@ -29,47 +30,38 @@ class AppRouter {
   /// onboarding until it has a display name, pairing until it belongs to an
   /// active couple, otherwise the main shell.
   ///
-  /// Used both at launch and right after signing in, so the two can't
-  /// disagree. Both recover a link made while this account was signed out,
-  /// and drop a link to a couple that has been unlinked.
-  static Future<String> resolveDestination({
-    required AuthService auth,
-    required FirestoreService firestore,
-  }) async {
-    final user = auth.currentUser;
+  /// Used at launch, after signing in and after onboarding, so they can't
+  /// disagree. Throws when the profile can't be loaded.
+  static Future<String> resolveDestination(BuildContext context) async {
+    final user = context.read<AuthService>().currentUser;
+    final users = context.read<UserRepository>();
+    final pairing = context.read<PairingRepository>();
     if (user == null) return AppRoutes.welcome;
-    if (!await auth.hasCompletedProfile(user.uid)) return AppRoutes.spriteSelect;
-    final coupleId = await firestore.recoverCoupleId(user.uid);
+
+    final profile =
+        await users.fetch(user.uid).timeout(const Duration(seconds: 15));
+    if (profile == null || profile.displayName.isEmpty) {
+      return AppRoutes.spriteSelect;
+    }
+    final coupleId = await pairing.resolveActiveCouple(
+      user.uid,
+      stored: profile.coupleId,
+    );
     return coupleId == null ? AppRoutes.pairing : AppRoutes.shell;
   }
 
-  static Future<String> _resolveLaunchDestination(BuildContext context) =>
-      resolveDestination(
-        auth: context.read<AuthService>(),
-        firestore: context.read<FirestoreService>(),
-      );
-
   static Route<dynamic> generateRoute(RouteSettings settings) {
-    switch (settings.name) {
-      case AppRoutes.launch:
-        return _page(const SplashScreen(resolveRoute: _resolveLaunchDestination));
-      case AppRoutes.welcome:
-        return _page(const WelcomeScreen());
-      case AppRoutes.spriteSelect:
-        return _page(const SpriteSelectScreen());
-      case AppRoutes.forgotPassword:
-        return _page(const ForgotPasswordScreen());
-      case AppRoutes.pairing:
-        return _page(const PairingScreen());
-      case AppRoutes.pairingSuccess:
-        return _page(const PairingSuccessScreen());
-      case AppRoutes.shell:
-        return _page(const ShellScreen());
-      default:
-        return _page(const SplashScreen(resolveRoute: _resolveLaunchDestination));
-    }
+    return MaterialPageRoute(
+      settings: settings,
+      builder: (_) => switch (settings.name) {
+        AppRoutes.welcome => const WelcomeScreen(),
+        AppRoutes.spriteSelect => const SpriteSelectScreen(),
+        AppRoutes.forgotPassword => const ForgotPasswordScreen(),
+        AppRoutes.pairing => const PairingScreen(),
+        AppRoutes.pairingSuccess => const PairingSuccessScreen(),
+        AppRoutes.shell => const ShellScreen(),
+        _ => const SplashScreen(resolveRoute: resolveDestination),
+      },
+    );
   }
-
-  static MaterialPageRoute<dynamic> _page(Widget child) =>
-      MaterialPageRoute(builder: (_) => child);
 }

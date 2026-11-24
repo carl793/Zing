@@ -40,11 +40,14 @@ class ReunionQuest {
   Map<String, dynamic> toMap() => {
         'status': status.name,
         'destination': destination,
-        if (targetDate != null) 'targetDate': Timestamp.fromDate(targetDate!),
+        'targetDate': _timestamp(targetDate),
         'proposedByUid': proposedByUid,
         'notes': notes,
-        if (acceptedAt != null) 'acceptedAt': Timestamp.fromDate(acceptedAt!),
+        'acceptedAt': _timestamp(acceptedAt),
       };
+
+  static Timestamp? _timestamp(DateTime? date) =>
+      date == null ? null : Timestamp.fromDate(date);
 }
 
 class CoupleSettings {
@@ -74,6 +77,9 @@ class CoupleModel {
   final ReunionQuest reunionQuest;
   final CoupleSettings settings;
 
+  /// Who ended the link, once [status] is unlinked.
+  final String? unlinkedByUid;
+
   CoupleModel({
     required this.coupleId,
     required this.memberUids,
@@ -84,6 +90,7 @@ class CoupleModel {
     this.unitPref = 'km',
     required this.reunionQuest,
     required this.settings,
+    this.unlinkedByUid,
   });
 
   factory CoupleModel.fromMap(String coupleId, Map<String, dynamic> data) => CoupleModel(
@@ -99,6 +106,7 @@ class CoupleModel {
         unitPref: data['unitPref'] ?? 'km',
         reunionQuest: ReunionQuest.fromMap(data['reunionQuest']),
         settings: CoupleSettings.fromMap(data['settings']),
+        unlinkedByUid: data['unlinkedByUid'],
       );
 
   CoupleModel copyWith({
@@ -117,6 +125,7 @@ class CoupleModel {
         unitPref: unitPref ?? this.unitPref,
         reunionQuest: reunionQuest ?? this.reunionQuest,
         settings: settings ?? this.settings,
+        unlinkedByUid: unlinkedByUid,
       );
 
   /// The other partner's uid, given the current user's uid.

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// App-wide audio settings and playback.
@@ -18,35 +19,63 @@ class AudioService {
   final AudioPlayer _sfxPlayer = AudioPlayer();
   bool _bgmEnabled = false;
   bool _sfxEnabled = true;
-  bool _bgmPlaying = false;
+  bool _bgmLoaded = false;
+  bool _bgmAudible = false;
+  bool _inForeground = true;
+
+  /// How many things (a recording, a playing voice note) need silence.
+  int _musicHolds = 0;
+
+  /// Generated once each; a tap must not recompute its own sound.
+  final Map<AppSfx, Uint8List> _tones = {};
 
   bool get bgmEnabled => _bgmEnabled;
   bool get sfxEnabled => _sfxEnabled;
 
+  /// Never throws: the app must start even if audio doesn't.
   Future<void> init() async {
-    final prefs = await SharedPreferences.getInstance();
-    _bgmEnabled = prefs.getBool(_keyBgm) ?? false;
-    _sfxEnabled = prefs.getBool(_keySfx) ?? true;
-    await _sfxPlayer.setAudioContext(
-      AudioContextConfig(
-        focus: AudioContextConfigFocus.mixWithOthers,
-      ).build(),
-    );
-    await _bgmPlayer.setReleaseMode(ReleaseMode.loop);
-    await _bgmPlayer.setVolume(0.35);
-    if (_bgmEnabled) await _startBgm();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _bgmEnabled = prefs.getBool(_keyBgm) ?? false;
+      _sfxEnabled = prefs.getBool(_keySfx) ?? true;
+      AppLifecycleListener(
+        onHide: () => _setForeground(false),
+        onShow: () => _setForeground(true),
+      );
+      await _sfxPlayer.setAudioContext(
+        AudioContextConfig(
+          focus: AudioContextConfigFocus.mixWithOthers,
+        ).build(),
+      );
+      await _bgmPlayer.setReleaseMode(ReleaseMode.loop);
+      await _bgmPlayer.setVolume(0.35);
+      await _updateBgm();
+    } catch (e) {
+      debugPrint('Audio setup failed: $e');
+    }
   }
 
   Future<void> setBgmEnabled(bool enabled) async {
     _bgmEnabled = enabled;
+    await _updateBgm();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyBgm, enabled);
-    if (enabled) {
-      await _startBgm();
-    } else {
-      await _bgmPlayer.stop();
-      _bgmPlaying = false;
-    }
+  }
+
+  /// Silences the music until a matching [releaseMusic].
+  void holdMusic() {
+    _musicHolds++;
+    _updateBgm();
+  }
+
+  void releaseMusic() {
+    if (_musicHolds > 0) _musicHolds--;
+    _updateBgm();
+  }
+
+  void _setForeground(bool foreground) {
+    _inForeground = foreground;
+    _updateBgm();
   }
 
   Future<void> setSfxEnabled(bool enabled) async {
@@ -55,22 +84,39 @@ class AudioService {
     await prefs.setBool(_keySfx, enabled);
   }
 
-  Future<void> _startBgm() async {
-    if (_bgmPlaying) return;
+  /// Plays or pauses the music to match the current settings.
+  Future<void> _updateBgm() =>
+      // One at a time, so a quick off/on can't overlap and end up reversed.
+      _bgmQueue = _bgmQueue.then((_) => _applyBgm());
+
+  Future<void> _bgmQueue = Future.value();
+
+  Future<void> _applyBgm() async {
+    final wanted = _bgmEnabled && _inForeground && _musicHolds == 0;
+    if (wanted == _bgmAudible) return;
+    _bgmAudible = wanted;
     try {
-      await _bgmPlayer.play(AssetSource(_bgmAsset));
-      _bgmPlaying = true;
-    } catch (_) {
-      _bgmPlaying = false;
-      // A playback error must not interrupt navigation or settings changes.
+      if (!wanted) {
+        await _bgmPlayer.pause();
+      } else if (_bgmLoaded) {
+        await _bgmPlayer.resume();
+      } else {
+        await _bgmPlayer.play(AssetSource(_bgmAsset));
+        _bgmLoaded = true;
+      }
+    } catch (e) {
+      // A playback error must not interrupt anything else.
+      _bgmAudible = false;
+      debugPrint('Background music failed: $e');
     }
   }
 
   Future<void> playSfx(AppSfx sfx) async {
     if (!_sfxEnabled) return;
     try {
+      final tone = _tones[sfx] ??= _makeTone(sfx.frequency);
       await _sfxPlayer.stop();
-      await _sfxPlayer.play(BytesSource(_makeTone(sfx.frequency)));
+      await _sfxPlayer.play(BytesSource(tone));
     } catch (_) {
       // Sound effects must never interrupt an app action.
     }

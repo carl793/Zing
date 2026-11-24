@@ -1,234 +1,226 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' show GeoPoint;
 import 'package:flutter/foundation.dart';
 
+import '../../../app/session_controller.dart';
 import '../../../core/models/couple_model.dart';
+import '../../../core/models/memory_model.dart';
 import '../../../core/models/user_model.dart';
-import '../../../core/services/couple_service.dart';
-import '../../../core/services/firestore_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/utils/date_utils.dart';
+import '../../../core/utils/safe_notifier.dart';
+import '../../../data/repositories/couple_repository.dart';
+import '../../../data/repositories/memory_repository.dart';
+import '../../../data/repositories/user_repository.dart';
 
-enum DistanceState { loading, bothLive, partial, bothOff, together, networkFail }
+enum DistanceState { loading, failed, unknown, apart, together }
+
 enum QuestState { none, pending, accepted }
 
-class DashboardController extends ChangeNotifier {
-  DashboardController(this._fs, this._loc, this._coupleService,
-      {required this.myUid});
-
-  final FirestoreService _fs;
-  final LocationService _loc;
-  final CoupleService _coupleService;
-  final String myUid;
-
-  // ── User & couple data ──
-  UserModel? me;
-  UserModel? partner;
-  CoupleModel? couple;
-  StreamSubscription? _coupleSub;
-  StreamSubscription? _meSub;
-  StreamSubscription? _partnerSub;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _yearMemoriesSub;
-
-  // ── Distance state ──
-  DistanceState distanceState = DistanceState.loading;
-  double? distanceKm;
-  String myCity = '';
-  String partnerCity = '';
-  DateTime? lastUpdated;
-  int daysTogetherthisYear = 0;
-
-  // ── Reunion Quest countdown ──
-  Timer? _questTimer;
-  Duration _questRemaining = Duration.zero;
-  double questProgress = 0;
-
-  bool _disposed = false;
-
-  String get questCountdown {
-    if (_questRemaining == Duration.zero) return '0D:00H:00M';
-    final d = _questRemaining.inDays;
-    final h = _questRemaining.inHours % 24;
-    final m = _questRemaining.inMinutes % 60;
-    return '${d}D:${h.toString().padLeft(2, '0')}H:${m.toString().padLeft(2, '0')}M';
+class DashboardController extends SafeNotifier {
+  DashboardController({
+    required this.session,
+    required this._users,
+    required this._couples,
+    required this._memories,
+    required this._location,
+  }) {
+    session.addListener(_onSession);
+    _onSession();
   }
 
-  QuestState get questState {
-    final q = couple?.reunionQuest;
-    if (q == null || q.status == ReunionQuestStatus.none) return QuestState.none;
-    if (q.status == ReunionQuestStatus.pending) return QuestState.pending;
-    return QuestState.accepted;
+  final SessionController session;
+  final UserRepository _users;
+  final CoupleRepository _couples;
+  final MemoryRepository _memories;
+  final LocationService _location;
+
+  /// Positions older than this are shown as approximate.
+  static const _freshFor = Duration(hours: 12);
+  static const _togetherKm = 5;
+  static const _refreshEvery = Duration(minutes: 5);
+
+  static const _saveError =
+      "COULDN'T SAVE THE QUEST. CHECK YOUR CONNECTION.";
+  static const _notLinkedError = 'NO PARTNER LINKED YET.';
+
+  UserModel? get me => session.me;
+  UserModel? get partner => session.partner;
+  CoupleModel? get couple => session.couple;
+
+  void _onSession() {
+    final coupleId = session.coupleId;
+    if (coupleId != null && coupleId != _watchedCouple) {
+      _watchedCouple = coupleId;
+      _watchYear(coupleId);
+    }
+    // At launch, and whenever sharing is switched on (here or in Settings).
+    if (isSharing != _wasSharing) {
+      _wasSharing = isSharing;
+      if (isSharing) refreshLocation();
+    }
+    _updateQuest();
+    notifyListeners();
   }
 
-  bool get isQuestProposer =>
-      couple?.reunionQuest.proposedByUid == myUid;
+  // ── Days together ──────────────────────────────────────────────────────
 
-  String get distanceUnit => couple?.unitPref == 'mi' ? 'MI' : 'KM';
-  double? get displayDistance => distanceKm == null
-      ? null
-      : distanceUnit == 'MI'
-          ? distanceKm! * 0.621371
-          : distanceKm;
-  bool get isApproximateDistance =>
-      (me?.currentLocation == null || me?.locationEnabled != true) ||
-      (partner?.currentLocation == null || partner?.locationEnabled != true);
+  int daysTogetherThisYear = 0;
+  String? _watchedCouple;
+  StreamSubscription<List<MemoryModel>>? _yearSub;
 
-  @override
-  void notifyListeners() {
-    if (!_disposed) super.notifyListeners();
-  }
-
-  Future<void> init() async {
-    final mySnap = await _fs.doc('users/$myUid').get();
-    me = UserModel.fromMap(myUid, mySnap.data()!);
-    _meSub = _fs.streamDoc('users/$myUid').listen((snap) {
-      if (!snap.exists || snap.data() == null) return;
-      final oldEnabled = me?.locationEnabled ?? false;
-      me = UserModel.fromMap(myUid, snap.data()!);
-      _recalculateDistance();
-      if (!oldEnabled && me!.locationEnabled) refreshMyLocation();
-      notifyListeners();
-    }, onError: _logStreamError);
-    if (me!.coupleId == null) return;
-
-    _coupleSub = _fs.streamDoc('couples/${me!.coupleId}').listen((snap) {
-      if (!snap.exists) return;
-      couple = CoupleModel.fromMap(snap.id, snap.data()!);
-      _updateQuestCountdown();
-      notifyListeners();
-    }, onError: _logStreamError);
-
-    final coupleSnap = await _fs.doc('couples/${me!.coupleId}').get();
-    couple = CoupleModel.fromMap(me!.coupleId!, coupleSnap.data()!);
-    final partnerUid = couple!.partnerUid(myUid);
-
-    // After an unlink the partner's profile is no longer readable; the
-    // shell's link guard then leaves for pairing.
-    _partnerSub = _fs.streamDoc('users/$partnerUid').listen((snap) {
-      if (!snap.exists) return;
-      partner = UserModel.fromMap(partnerUid, snap.data()!);
-      _recalculateDistance();
-      notifyListeners();
-    }, onError: _logStreamError);
-
-    await refreshMyLocation();
-    _loadDaysTogetherThisYear();
-  }
-
-  void _logStreamError(Object error) =>
-      debugPrint('Dashboard stream error: $error');
-
-  void _loadDaysTogetherThisYear() {
-    if (me?.coupleId == null) return;
-    final year = DateTime.now().year;
-    // Keep this aligned with the calendar's UTC-midnight date convention.
-    // Filter entryType client-side to avoid requiring a composite index.
-    _yearMemoriesSub?.cancel();
-    _yearMemoriesSub = _fs
-        .streamCollection(
-          'couples/${me!.coupleId}/memories',
-          whereDateRange: (
-            'date',
-            DateTime.utc(year, 1, 1),
-            DateTime.utc(year + 1, 1, 1),
-          ),
-        )
-        .listen(
-      (snap) {
-        final loggedDays = <String>{};
-        for (final doc in snap.docs) {
-          final data = doc.data();
-          if ((data['entryType'] ?? 'memory') != 'memory') continue;
-          final rawDate = data['date'];
-          final date = rawDate is Timestamp
-              ? rawDate.toDate()
-              : rawDate is DateTime
-                  ? rawDate
-                  : null;
-          if (date == null) continue;
-          loggedDays.add(ZingDateUtils.isoDate(date));
-        }
-        daysTogetherthisYear = loggedDays.length;
+  void _watchYear(String coupleId) {
+    _yearSub?.cancel();
+    _yearSub = _memories.watchYear(coupleId, DateTime.now().year).listen(
+      (entries) {
+        daysTogetherThisYear = entries
+            .where((e) => e.entryType == MemoryEntryType.memory)
+            .map((e) => ZingDateUtils.isoDate(e.date))
+            .toSet()
+            .length;
         notifyListeners();
       },
-      onError: (Object error) =>
-          debugPrint('Dashboard yearly memory stream error: $error'),
+      onError: (Object e) => debugPrint('Dashboard memories error: $e'),
     );
   }
 
-  Future<void> refreshMyLocation() async {
-    if (me?.locationEnabled == true) {
-      try {
-        final pos = await _loc.updateCurrentLocation(myUid);
-        if (pos != null) {
-          me = UserModel.fromMap(myUid, {...me!.toMap(), 'currentLocation': pos});
-        }
-      } catch (_) {
-        distanceState = DistanceState.networkFail;
-        notifyListeners();
-        return;
-      }
-    }
-    _recalculateDistance();
-    notifyListeners();
-  }
+  // ── Location ───────────────────────────────────────────────────────────
 
-  Future<void> enableLocation() async {
+  /// Null until checked.
+  LocationAccess? locationAccess;
+
+  /// True while this phone's position is being read.
+  bool locating = false;
+
+  /// True when sharing is on but the phone gave no position.
+  bool positionUnavailable = false;
+
+  DateTime? _lastRefresh;
+  bool _wasSharing = false;
+
+  bool get isSharing => me?.locationEnabled == true;
+
+  /// Sharing is on in Zing, but the phone no longer allows it.
+  bool get sharingBlocked =>
+      isSharing &&
+      locationAccess != null &&
+      locationAccess != LocationAccess.granted;
+
+  /// Starts sharing. Call only once access has been granted.
+  Future<void> startSharing() async {
     try {
-      final granted = await _loc.requestPermission();
-      if (!granted) return;
-      await _fs.updateDoc('users/$myUid', {'locationEnabled': true});
-      me = UserModel.fromMap(myUid, {...me!.toMap(), 'locationEnabled': true});
-      await refreshMyLocation();
+      await _users.shareLocation(session.uid);
     } catch (e) {
-      debugPrint('Enable location failed: $e');
-      distanceState = DistanceState.networkFail;
-      notifyListeners();
+      debugPrint('Sharing location failed: $e');
     }
+    await refreshLocation();
   }
 
-  void _recalculateDistance() {
-    myCity = me?.homeCity ?? '';
-    partnerCity = partner?.homeCity ?? '';
-    final myLoc = me?.locationEnabled == true
-        ? me?.currentLocation ?? me?.homeLocation
-        : me?.homeLocation;
-    final partnerLoc = partner?.locationEnabled == true
-        ? partner?.currentLocation ?? partner?.homeLocation
-        : partner?.homeLocation;
-
-    if (myLoc == null && partnerLoc == null) {
-      distanceKm = null;
-      distanceState = DistanceState.bothOff;
-      notifyListeners();
+  /// Refreshes this phone's shared position, e.g. when the app is reopened.
+  Future<void> refreshLocation({bool onlyIfStale = false}) async {
+    if (!isSharing || locating) return;
+    final last = _lastRefresh;
+    if (onlyIfStale &&
+        last != null &&
+        !sharingBlocked &&
+        DateTime.now().difference(last) < _refreshEvery) {
       return;
     }
-
-    if (me?.locationEnabled == true && partner?.locationEnabled == true) {
-      distanceState = DistanceState.bothLive;
-    } else {
-      distanceState = DistanceState.partial;
-    }
-
-    if (myLoc != null && partnerLoc != null) {
-      distanceKm = LocationService.distanceBetween(myLoc, partnerLoc);
-      if (me?.locationEnabled == true &&
-          partner?.locationEnabled == true &&
-          me?.currentLocation != null &&
-          partner?.currentLocation != null &&
-          distanceKm! < 5) {
-        distanceState = DistanceState.together;
-      }
-    } else {
-      distanceKm = null;
-    }
-
-    lastUpdated = me?.currentLocationUpdatedAt;
+    _lastRefresh = DateTime.now();
+    locating = true;
     notifyListeners();
+    try {
+      locationAccess = await _location.access();
+      if (locationAccess == LocationAccess.granted) {
+        final position = await _location.currentPosition();
+        positionUnavailable = position == null;
+        // Sharing may have been turned off while waiting for the position.
+        if (position != null && isSharing && !isDisposed) {
+          await _users.shareLocation(session.uid, location: position);
+        }
+      }
+    } catch (e) {
+      debugPrint('Refreshing location failed: $e');
+    } finally {
+      locating = false;
+      notifyListeners();
+    }
   }
 
-  void _updateQuestCountdown() {
+  // ── Distance ───────────────────────────────────────────────────────────
+
+  static bool _isLive(UserModel? user) {
+    final at = user?.currentLocationUpdatedAt;
+    return user != null &&
+        user.locationEnabled &&
+        user.currentLocation != null &&
+        // Missing only while the server is still filling it in.
+        (at == null || DateTime.now().difference(at) < _freshFor);
+  }
+
+  static GeoPoint? _pointOf(UserModel? user) => user == null
+      ? null
+      : (user.locationEnabled ? user.currentLocation : null) ??
+          user.homeLocation;
+
+  bool get isMyLocationLive => _isLive(me);
+  bool get isPartnerLocationLive => _isLive(partner);
+  bool get isApproximate => !isMyLocationLive || !isPartnerLocationLive;
+
+  double? get distanceKm {
+    final mine = _pointOf(me);
+    final theirs = _pointOf(partner);
+    if (mine == null || theirs == null) return null;
+    return LocationService.distanceKm(mine, theirs);
+  }
+
+  String get distanceUnit => couple?.unitPref == 'mi' ? 'MI' : 'KM';
+
+  double? get displayDistance {
+    final km = distanceKm;
+    return km == null || distanceUnit == 'KM' ? km : km * 0.621371;
+  }
+
+  DistanceState get distanceState {
+    if (!session.isReady) {
+      return session.loadFailed ? DistanceState.failed : DistanceState.loading;
+    }
+    final km = distanceKm;
+    if (km == null) return DistanceState.unknown;
+    return !isApproximate && km < _togetherKm
+        ? DistanceState.together
+        : DistanceState.apart;
+  }
+
+  /// Whose position is missing or out of date, if anyone's.
+  String? get approximateReason {
+    if (!isApproximate) return null;
+    if (!isMyLocationLive && !isPartnerLocationLive) {
+      return 'APPROX. BOTH LOCATIONS ARE NOT LIVE';
+    }
+    return isMyLocationLive
+        ? "APPROX. ${session.partnerName}'S LOCATION IS NOT LIVE"
+        : 'APPROX. YOUR LOCATION IS NOT LIVE';
+  }
+
+  // ── Reunion quest ──────────────────────────────────────────────────────
+
+  Timer? _questTimer;
+  String questCountdown = _zeroCountdown;
+  double questProgress = 0;
+  static const _zeroCountdown = '0D:00H:00M';
+
+  QuestState get questState => switch (couple?.reunionQuest.status) {
+        ReunionQuestStatus.pending => QuestState.pending,
+        ReunionQuestStatus.accepted => QuestState.accepted,
+        _ => QuestState.none,
+      };
+
+  bool get isQuestProposer =>
+      couple?.reunionQuest.proposedByUid == session.uid;
+
+  void _updateQuest() {
     _questTimer?.cancel();
     final quest = couple?.reunionQuest;
     final target = quest?.targetDate;
@@ -236,101 +228,66 @@ class DashboardController extends ChangeNotifier {
       return;
     }
 
-    // Progress runs from when the quest was accepted. Quests accepted before
-    // that was recorded fall back to the day the couple linked.
+    final remaining = target.difference(DateTime.now());
+    if (remaining <= Duration.zero) {
+      questCountdown = _zeroCountdown;
+      questProgress = 1;
+      return;
+    }
+    String two(int n) => n.toString().padLeft(2, '0');
+    questCountdown = '${remaining.inDays}D:${two(remaining.inHours % 24)}H:'
+        '${two(remaining.inMinutes % 60)}M';
+
+    // Progress runs from acceptance; quests accepted before that was recorded
+    // fall back to the day the couple linked.
     final start = quest.acceptedAt ?? couple!.linkedAt;
     final total = target.difference(start).inSeconds;
+    questProgress = total <= 0
+        ? 0
+        : (1 - remaining.inSeconds / total).clamp(0.0, 1.0).toDouble();
 
-    void tick() {
-      final remaining = target.difference(DateTime.now());
-      if (remaining.isNegative) {
-        _questRemaining = Duration.zero;
-        questProgress = 1.0;
-        _questTimer?.cancel();
-      } else {
-        _questRemaining = remaining;
-        final elapsed = total - remaining.inSeconds;
-        questProgress =
-            (total > 0 ? elapsed / total : 0.0).clamp(0.0, 1.0).toDouble();
-      }
+    // The display has no seconds, so wake only when its next minute starts.
+    _questTimer = Timer(Duration(seconds: remaining.inSeconds % 60 + 1), () {
+      _updateQuest();
       notifyListeners();
-    }
-
-    // Show the real countdown immediately, not 0D:00H:00M for a second.
-    tick();
-    if (_questRemaining == Duration.zero) return;
-    _questTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+    });
   }
 
-  // ── Quest actions ── each returns null on success, or a message to show.
-
-  static const _questSaveError =
-      "COULDN'T SAVE THE QUEST. CHECK YOUR CONNECTION.";
-  static const _notLinkedError = 'NO PARTNER LINKED YET.';
+  // Each returns null on success, or a message to show.
 
   Future<String?> proposeQuest({
     required String destination,
     required DateTime targetDate,
     String? notes,
-  }) async {
-    final coupleId = me?.coupleId;
-    if (couple == null || coupleId == null) return _notLinkedError;
-    final quest = ReunionQuest(
-      status: ReunionQuestStatus.pending,
-      destination: destination,
-      targetDate: targetDate,
-      proposedByUid: myUid,
-      notes: notes,
-    );
-    return _saveQuest(coupleId, quest.toMap());
-  }
+  }) =>
+      _saveQuest((id) => _couples.proposeQuest(
+            id,
+            destination: destination,
+            targetDate: targetDate,
+            proposedByUid: session.uid,
+            notes: notes,
+          ));
 
-  Future<String?> acceptQuest() async {
-    final coupleId = me?.coupleId;
-    final current = couple?.reunionQuest;
-    if (current == null || coupleId == null) return _notLinkedError;
-    final accepted = ReunionQuest(
-      status: ReunionQuestStatus.accepted,
-      destination: current.destination,
-      targetDate: current.targetDate,
-      proposedByUid: current.proposedByUid,
-      notes: current.notes,
-    );
-    return _saveQuest(coupleId, {
-      ...accepted.toMap(),
-      'acceptedAt': FieldValue.serverTimestamp(),
-    });
-  }
+  Future<String?> acceptQuest() => _saveQuest(_couples.acceptQuest);
 
-  Future<String?> cancelQuest() async {
-    final coupleId = me?.coupleId;
-    if (couple == null || coupleId == null) return _notLinkedError;
+  Future<String?> cancelQuest() => _saveQuest(_couples.clearQuest);
+
+  Future<String?> _saveQuest(Future<void> Function(String id) write) async {
+    final id = session.coupleId;
+    if (id == null) return _notLinkedError;
     try {
-      await _coupleService.clearReunionQuest(coupleId);
-      return null;
-    } catch (e) {
-      debugPrint('Clearing the quest failed: $e');
-      return _questSaveError;
-    }
-  }
-
-  Future<String?> _saveQuest(String coupleId, Map<String, dynamic> quest) async {
-    try {
-      await _fs.updateDoc('couples/$coupleId', {'reunionQuest': quest});
+      await write(id);
       return null;
     } catch (e) {
       debugPrint('Saving the quest failed: $e');
-      return _questSaveError;
+      return _saveError;
     }
   }
 
   @override
   void dispose() {
-    _disposed = true;
-    _coupleSub?.cancel();
-    _meSub?.cancel();
-    _partnerSub?.cancel();
-    _yearMemoriesSub?.cancel();
+    session.removeListener(_onSession);
+    _yearSub?.cancel();
     _questTimer?.cancel();
     super.dispose();
   }

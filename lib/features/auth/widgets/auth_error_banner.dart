@@ -18,6 +18,7 @@ class AuthErrorBanner extends StatelessWidget {
       AuthErrorType.invalidEmail => ('✕ THAT EMAIL ADDRESS LOOKS INVALID.', AppColors.coral),
       AuthErrorType.tooManyAttempts => ('⚠ TOO MANY ATTEMPTS. TRY AGAIN LATER.', AppColors.amber),
       AuthErrorType.network => ('⚠ NO CONNECTION. CHECK YOUR INTERNET.', AppColors.gray),
+      AuthErrorType.googleUnavailable => ("⚠ GOOGLE SIGN-IN ISN'T AVAILABLE ON THIS PHONE. USE YOUR EMAIL.", AppColors.amber),
       AuthErrorType.googleFailed => ('⚠ GOOGLE SIGN-IN FAILED. TRY AGAIN.', AppColors.coral),
       _ => ('⚠ SOMETHING WENT WRONG. TRY AGAIN.', AppColors.coral),
     };

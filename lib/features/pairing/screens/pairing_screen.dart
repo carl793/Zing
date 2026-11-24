@@ -7,7 +7,9 @@ import '../../../core/widgets/pixel_button.dart';
 import '../../../core/widgets/pixel_tab_bar.dart';
 import '../../../core/widgets/onboarding_progress_bar.dart';
 import '../../../core/widgets/pixel_snack_bar.dart';
-import '../../../core/services/firestore_service.dart';
+import '../../../core/widgets/pixel_error_box.dart';
+import '../../../data/repositories/pairing_repository.dart';
+import '../../../data/repositories/user_repository.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/router/app_router.dart';
 import '../controllers/pairing_controller.dart';
@@ -35,7 +37,8 @@ class _PairingScreenState extends State<PairingScreen> {
     final uid = context.read<AuthService>().currentUser!.uid;
     return ChangeNotifierProvider(
       create: (_) => PairingController(
-        context.read<FirestoreService>(),
+        context.read<PairingRepository>(),
+        context.read<UserRepository>(),
         currentUid: uid,
       ),
       child: _PairingView(onLogout: _logout),
@@ -197,6 +200,12 @@ class _CreateIdle extends StatelessWidget {
               .copyWith(color: Colors.white70, fontSize: 7, height: 1.8),
         ),
         const SizedBox(height: AppSpacing.lg),
+        if (ctrl.createFailed) ...[
+          const PixelErrorBox(
+            message: "COULDN'T CREATE A CODE.\nCHECK YOUR INTERNET.",
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ],
         PixelButton(
           label: '[ GENERATE CODE ]',
           style: PixelButtonStyle.yellow,

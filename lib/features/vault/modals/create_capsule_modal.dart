@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/models/capsule_model.dart';
+import '../../../core/permissions/permission_flows.dart';
+import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -11,6 +15,7 @@ import '../../../core/widgets/pixel_inset_field.dart';
 import '../../../core/widgets/pixel_modal_shell.dart';
 import '../../../core/widgets/sprite_avatar.dart';
 import '../controllers/vault_controller.dart';
+import '../controllers/voice_recorder.dart';
 
 class CreateCapsuleModal extends StatefulWidget {
   const CreateCapsuleModal({super.key});
@@ -26,8 +31,27 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
   TimeOfDay _unlockTime = const TimeOfDay(hour: 12, minute: 0);
   String? _formError;
 
+  // The draft belongs to this form: closing it throws everything away and
+  // stops the microphone.
+  final _voice = VoiceRecorder();
+  CapsuleTriggerMode _trigger = CapsuleTriggerMode.dateRelease;
+  Uint8List? _photo;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _voice.addListener(_onVoice);
+  }
+
+  void _onVoice() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _voice.removeListener(_onVoice);
+    _voice.dispose();
     _titleCtrl.dispose();
     _noteCtrl.dispose();
     super.dispose();
@@ -87,19 +111,77 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} @ $h12:$m $ampm';
   }
 
+  Future<void> _choosePhoto() async {
+    final bytes = await pickPhoto(
+      context,
+      settings: context.read<LocationService>(),
+    );
+    if (bytes != null && mounted) setState(() => _photo = bytes);
+  }
+
+  Future<void> _record() async {
+    final granted = await ensureMicrophoneAccess(
+      context,
+      hasPermission: _voice.hasPermission,
+      settings: context.read<LocationService>(),
+    );
+    if (!granted || !mounted) return;
+    final started = await _voice.start();
+    if (!started && mounted) {
+      setState(() => _formError =
+          "COULDN'T START RECORDING. IS ANOTHER APP USING THE MICROPHONE?");
+    }
+  }
+
+  void _onVoiceTap() {
+    switch (_voice.status) {
+      case VoiceStatus.idle:
+        _record();
+      case VoiceStatus.recording:
+        _voice.stop();
+      case VoiceStatus.recorded:
+        _voice.discard();
+    }
+  }
+
+  String? _problem(String title) {
+    if (title.isEmpty) return 'GIVE YOUR CHEST A NAME.';
+    if (_trigger != CapsuleTriggerMode.dateRelease) return null;
+    final date = _unlockDate;
+    if (date == null) return 'SET AN UNLOCK DATE.';
+    if (!date.isAfter(DateTime.now())) return 'PICK A TIME IN THE FUTURE.';
+    return null;
+  }
+
   Future<void> _save() async {
+    final title = _titleCtrl.text.trim();
+    final problem = _problem(title);
+    if (problem != null) {
+      setState(() => _formError = problem);
+      return;
+    }
     final ctrl = context.read<VaultController>();
-    setState(() => _formError = null);
+    setState(() {
+      _saving = true;
+      _formError = null;
+    });
+    await _voice.stop();
 
     final error = await ctrl.createCapsule(
-      title: _titleCtrl.text,
-      secretNote: _noteCtrl.text,
+      trigger: _trigger,
+      title: title,
+      secretNote: _noteCtrl.text.trim(),
       unlockDate: _unlockDate,
+      photo: _photo,
+      voiceNotePath: _voice.path,
     );
 
     if (!mounted) return;
     if (error != null) {
-      setState(() => _formError = error);
+      setState(() {
+        _saving = false;
+        _formError = error;
+      });
       return;
     }
     Navigator.of(context).pop(true);
@@ -107,8 +189,8 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
 
   @override
   Widget build(BuildContext context) {
-    final ctrl = context.watch<VaultController>();
-    final isDate = ctrl.draftTrigger == CapsuleTriggerMode.dateRelease;
+    final isDate = _trigger == CapsuleTriggerMode.dateRelease;
+    final seconds = _voice.elapsed.inSeconds;
 
     return PixelModalShell(
       title: 'CRAFT TREASURE\nCHEST',
@@ -131,14 +213,16 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
                 child: _TriggerTab(
                   label: '[ DATE\nRELEASE ]',
                   active: isDate,
-                  onTap: () => ctrl.setDraftTrigger(CapsuleTriggerMode.dateRelease),
+                  onTap: () =>
+                      setState(() => _trigger = CapsuleTriggerMode.dateRelease),
                 ),
               ),
               Expanded(
                 child: _TriggerTab(
                   label: '[ DUAL-TAP\nSYNC ]',
                   active: !isDate,
-                  onTap: () => ctrl.setDraftTrigger(CapsuleTriggerMode.dualTapSync),
+                  onTap: () =>
+                      setState(() => _trigger = CapsuleTriggerMode.dualTapSync),
                 ),
               ),
             ],
@@ -151,7 +235,7 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
             hint: 'OPEN ON YOUR FLIGHT HOME..',
             controller: _titleCtrl,
             maxLength: 60,
-            enabled: !ctrl.isSaving,
+            enabled: !_saving,
           ),
           const SizedBox(height: AppSpacing.md),
 
@@ -163,7 +247,7 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
                 Text('UNLOCK DATE & TIME', style: AppTextStyles.label),
                 const SizedBox(height: 6),
                 GestureDetector(
-                  onTap: ctrl.isSaving ? null : _pickDateTime,
+                  onTap: _saving ? null : _pickDateTime,
                   child: Container(
                     width: double.infinity,
                     decoration: BoxDecoration(
@@ -211,7 +295,7 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
             controller: _noteCtrl,
             maxLines: 4,
             maxLength: 500,
-            enabled: !ctrl.isSaving,
+            enabled: !_saving,
           ),
           const SizedBox(height: AppSpacing.md),
 
@@ -222,35 +306,34 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
             children: [
               Expanded(
                 child: _MediaButton(
-                  label: ctrl.draftPhotoBytes != null
-                      ? '[ ✓ PHOTO ADDED ]'
+                  label: _photo != null
+                      ? '[ ✓ PHOTO ADDED ]\nTAP TO REMOVE'
                       : '[ + HIDDEN PHOTO ]',
                   icon: Icons.image,
-                  active: ctrl.draftPhotoBytes != null,
-                  onTap: ctrl.isSaving
+                  active: _photo != null,
+                  onTap: _saving
                       ? null
-                      : (ctrl.draftPhotoBytes != null
-                          ? ctrl.clearChestPhoto
-                          : ctrl.pickChestPhoto),
+                      : (_photo != null
+                          ? () => setState(() => _photo = null)
+                          : _choosePhoto),
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: _MediaButton(
-                  label: ctrl.isRecording
-                      ? '[ ■ STOP ]'
-                      : (ctrl.draftVoiceNotePath != null
-                          ? '[ ✓ VOICE ADDED ]'
-                          : '[ (mic) RECORD\nVOICE NOTE ]'),
-                  icon: ctrl.isRecording ? Icons.stop : Icons.mic,
-                  active: ctrl.draftVoiceNotePath != null,
-                  onTap: ctrl.isSaving
-                      ? null
-                      : (ctrl.isRecording
-                          ? ctrl.stopRecording
-                          : (ctrl.draftVoiceNotePath != null
-                              ? ctrl.clearVoiceNote
-                              : ctrl.startRecording)),
+                  label: switch (_voice.status) {
+                    VoiceStatus.idle => '[ RECORD\nVOICE NOTE ]',
+                    VoiceStatus.recording =>
+                      '[ ■ STOP ]\n0:${seconds.toString().padLeft(2, '0')} '
+                          '/ ${VoiceRecorder.maxLength.inSeconds}S',
+                    VoiceStatus.recorded =>
+                      '[ ✓ VOICE ADDED ]\nTAP TO REMOVE',
+                  },
+                  icon: _voice.status == VoiceStatus.recording
+                      ? Icons.stop
+                      : Icons.mic,
+                  active: _voice.status == VoiceStatus.recorded,
+                  onTap: _saving ? null : _onVoiceTap,
                 ),
               ),
             ],
@@ -281,9 +364,9 @@ class _CreateCapsuleModalState extends State<CreateCapsuleModal> {
           ],
 
           PixelButton(
-            label: ctrl.isSaving ? 'SEALING...' : '[ LOCK & SEAL CHEST ]',
+            label: _saving ? 'SEALING...' : '[ LOCK & SEAL CHEST ]',
             style: PixelButtonStyle.yellow,
-            onPressed: ctrl.isSaving ? null : _save,
+            onPressed: _saving ? null : _save,
           ),
         ],
       ),

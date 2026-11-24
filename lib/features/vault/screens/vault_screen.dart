@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/models/capsule_model.dart';
-import '../../../core/services/auth_service.dart';
-import '../../../core/services/firestore_service.dart';
+import '../../../app/session_controller.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -12,6 +11,7 @@ import '../../../core/widgets/pixel_button.dart';
 import '../../../core/widgets/pixel_snack_bar.dart';
 import '../../../core/widgets/sprite_avatar.dart';
 import '../../../core/widgets/pixel_modal_shell.dart';
+import '../../../data/repositories/capsule_repository.dart';
 import '../controllers/vault_controller.dart';
 import '../modals/chest_locked_date_modal.dart';
 import '../modals/chest_locked_dualtap_modal.dart';
@@ -26,13 +26,12 @@ class VaultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final uid = context.read<AuthService>().currentUser!.uid;
     return ChangeNotifierProvider(
       create: (ctx) => VaultController(
-        ctx.read<FirestoreService>(),
+        ctx.read<SessionController>(),
+        ctx.read<CapsuleRepository>(),
         ctx.read<StorageService>(),
-        myUid: uid,
-      )..init(),
+      ),
       child: const _VaultView(),
     );
   }
@@ -45,7 +44,6 @@ class _VaultView extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctrl = context.watch<VaultController>();
     final capsules = ctrl.capsules;
-    final isEmpty = ctrl.isLoading ? false : ctrl.isEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.navy,
@@ -135,11 +133,7 @@ class _VaultView extends StatelessWidget {
                 const SizedBox(height: AppSpacing.lg),
                 Expanded(
                   child: capsules.isEmpty
-                      ? (isEmpty &&
-                                !ctrl.showArchived &&
-                                ctrl.filter == VaultFilter.all &&
-                                ctrl.senderFilter == VaultSenderFilter.all &&
-                                ctrl.statusFilter == VaultStatusFilter.all
+                      ? (ctrl.isEmpty && !ctrl.showArchived && !ctrl.hasFilters
                             ? _EmptyVault(ctrl: ctrl)
                             : Center(
                                 child: Text(

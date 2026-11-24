@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/remote_photo.dart';
 
 /// Swipeable photo viewer with ‹ PHOTO 1 OF N › controls.
 class PhotoCarousel extends StatefulWidget {
@@ -61,27 +62,7 @@ class _PhotoCarouselState extends State<PhotoCarousel> {
                   controller: _pageController,
                   itemCount: count,
                   onPageChanged: (i) => setState(() => _index = i),
-                  itemBuilder: (_, i) => Image.network(
-                    widget.urls[i],
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: double.infinity,
-                    loadingBuilder: (context, child, progress) => progress == null
-                        ? child
-                        : const Center(
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.yellow,
-                              ),
-                            ),
-                          ),
-                    errorBuilder: (_, _, _) => const Center(
-                      child: Icon(Icons.broken_image, color: AppColors.gray),
-                    ),
-                  ),
+                  itemBuilder: (_, i) => RemotePhoto(widget.urls[i]),
                 ),
                 Positioned(
                   left: 0,
